@@ -4,11 +4,10 @@ import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { VisualizerColors } from "@/lib/themes/types"
 
-interface WaveformVisualizerProps {
+interface CircularVisualizerProps {
   audioData?: Uint8Array | null
   isPlaying: boolean
   className?: string
-  barCount?: number
   colors?: VisualizerColors
 }
 
@@ -22,18 +21,16 @@ const defaultColors: VisualizerColors = {
   highlight: "#ec4899",
 }
 
-export function WaveformVisualizer({
+export function CircularVisualizer({
   audioData,
   isPlaying,
   className,
-  barCount = 60,
   colors = defaultColors,
-}: WaveformVisualizerProps) {
+}: CircularVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
-  const smoothedDataRef = useRef<number[]>(new Array(barCount).fill(0))
 
-  const drawWaveform = useCallback(() => {
+  const draw = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
@@ -42,56 +39,73 @@ export function WaveformVisualizer({
 
     const width = canvas.width / (window.devicePixelRatio || 1)
     const height = canvas.height / (window.devicePixelRatio || 1)
+    const centerX = width / 2
+    const centerY = height / 2
+    const radius = Math.min(width, height) / 2 - 20
 
     ctx.clearRect(0, 0, width, height)
 
-    const barWidth = width / barCount
-    const gap = barWidth * 0.3
-    const actualBarWidth = barWidth - gap
-
-    for (let i = 0; i < barCount; i++) {
-      let value = 0
-      if (audioData && audioData.length > 0) {
-        const dataIndex = Math.floor((i / barCount) * audioData.length)
-        value = audioData[dataIndex] / 255
+    // Get audio data
+    let values: number[] = []
+    if (audioData && audioData.length > 0) {
+      const samples = 64
+      for (let i = 0; i < samples; i++) {
+        const idx = Math.floor((i / samples) * audioData.length)
+        values.push(audioData[idx] / 255)
       }
+    } else {
+      values = new Array(64).fill(0)
+    }
 
-      // Smooth the value
-      const smoothing = 0.2
-      smoothedDataRef.current[i] =
-        smoothedDataRef.current[i] * (1 - smoothing) + value * smoothing
+    const bars = values.length
+    const angleStep = (Math.PI * 2) / bars
 
-      const smoothedValue = isPlaying ? smoothedDataRef.current[i] : smoothedDataRef.current[i] * 0.95
+    // Draw circular bars
+    for (let i = 0; i < bars; i++) {
+      const value = isPlaying ? values[i] : values[i] * 0.95
+      const barHeight = value * radius * 0.8
+      const angle = i * angleStep - Math.PI / 2
 
-      const barHeight = smoothedValue * height * 0.9
-      const x = i * barWidth + gap / 2
-      const y = (height - barHeight) / 2
+      const innerRadius = radius * 0.2
+      const x1 = centerX + Math.cos(angle) * innerRadius
+      const y1 = centerY + Math.sin(angle) * innerRadius
+      const x2 = centerX + Math.cos(angle) * (innerRadius + barHeight)
+      const y2 = centerY + Math.sin(angle) * (innerRadius + barHeight)
 
-      // Create gradient for each bar using theme colors
-      const gradient = ctx.createLinearGradient(x, y + barHeight, x, y)
+      // Create gradient using theme colors
+      const gradient = ctx.createLinearGradient(x1, y1, x2, y2)
       gradient.addColorStop(0, hexToRgba(colors.primary, 0.8))
       gradient.addColorStop(0.5, hexToRgba(colors.secondary, 0.6))
-      gradient.addColorStop(1, hexToRgba(colors.tertiary, 0.4))
+      gradient.addColorStop(1, hexToRgba(colors.highlight, 0.4))
 
-      ctx.fillStyle = gradient
+      ctx.strokeStyle = gradient
+      ctx.lineWidth = 3
+      ctx.lineCap = "round"
 
-      // Draw rounded bar
-      const radius = actualBarWidth / 2
       ctx.beginPath()
-      ctx.roundRect(x, y, actualBarWidth, barHeight, radius)
-      ctx.fill()
+      ctx.moveTo(x1, y1)
+      ctx.lineTo(x2, y2)
+      ctx.stroke()
 
-      // Add glow effect when playing
-      if (isPlaying && smoothedValue > 0.1) {
-        ctx.shadowBlur = 10
+      // Glow effect
+      if (isPlaying && value > 0.3) {
+        ctx.shadowBlur = 15
         ctx.shadowColor = colors.glow
-        ctx.fill()
+        ctx.stroke()
         ctx.shadowBlur = 0
       }
     }
 
-    animationRef.current = requestAnimationFrame(drawWaveform)
-  }, [audioData, isPlaying, barCount, colors])
+    // Draw center circle
+    ctx.beginPath()
+    ctx.arc(centerX, centerY, radius * 0.15, 0, Math.PI * 2)
+    ctx.fillStyle = isPlaying 
+      ? hexToRgba(colors.primary, 0.3) 
+      : hexToRgba(colors.primary, 0.1)
+    ctx.fill()
+
+    animationRef.current = requestAnimationFrame(draw)
+  }, [audioData, isPlaying, colors])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -112,13 +126,13 @@ export function WaveformVisualizer({
     handleResize()
     window.addEventListener("resize", handleResize)
 
-    drawWaveform()
+    draw()
 
     return () => {
       window.removeEventListener("resize", handleResize)
       cancelAnimationFrame(animationRef.current)
     }
-  }, [drawWaveform])
+  }, [draw])
 
   return (
     <canvas

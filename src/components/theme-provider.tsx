@@ -1,66 +1,98 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState } from "react"
-
-type Theme = "dark" | "light" | "system"
+import { createContext, useContext, useEffect, useState, useCallback } from "react"
+import { ThemeId, VisualizerColors } from "@/lib/themes/types"
+import { getTheme, getVisualizerPreset, visualizerPresets } from "@/lib/themes/presets"
 
 type ThemeProviderProps = {
   children: React.ReactNode
-  defaultTheme?: Theme
+  defaultTheme?: ThemeId
   storageKey?: string
 }
 
 type ThemeProviderState = {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+  theme: ThemeId
+  visualizerPreset: string
+  visualizerColors: VisualizerColors
+  setTheme: (theme: ThemeId) => void
+  setVisualizerPreset: (presetId: string) => void
+  isDark: boolean
 }
 
 const initialState: ThemeProviderState = {
-  theme: "system",
+  theme: "dark",
+  visualizerPreset: "indigo",
+  visualizerColors: visualizerPresets.indigo,
   setTheme: () => null,
+  setVisualizerPreset: () => null,
+  isDark: true,
 }
 
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
+// All theme class names to remove when switching
+const themeClasses = ["dark", "light", "neon", "minimal", "sunset", "forest"] as const
+
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
-  storageKey = "vite-ui-theme",
+  defaultTheme = "dark",
+  storageKey = "elevenmusic-theme",
   ...props
 }: ThemeProviderProps) {
-  const [theme, setTheme] = useState<Theme>(defaultTheme)
+  const [theme, setThemeState] = useState<ThemeId>(defaultTheme)
+  const [visualizerPreset, setVisualizerPresetState] = useState<string>("indigo")
   const [mounted, setMounted] = useState(false)
 
+  // Initialize from localStorage
   useEffect(() => {
     setMounted(true)
-    const stored = localStorage.getItem(storageKey) as Theme | null
-    if (stored) {
-      setTheme(stored)
+    const storedTheme = localStorage.getItem(storageKey) as ThemeId | null
+    const storedVisualizerPreset = localStorage.getItem(`${storageKey}-visualizer`)
+    
+    if (storedTheme && themeClasses.includes(storedTheme as typeof themeClasses[number])) {
+      setThemeState(storedTheme)
+    }
+    if (storedVisualizerPreset && visualizerPresets[storedVisualizerPreset]) {
+      setVisualizerPresetState(storedVisualizerPreset)
     }
   }, [storageKey])
 
+  // Apply theme class to document
   useEffect(() => {
     if (!mounted) return
 
     const root = window.document.documentElement
-    root.classList.remove("light", "dark")
-
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light"
-      root.classList.add(systemTheme)
-    } else {
-      root.classList.add(theme)
-    }
+    
+    // Remove all theme classes
+    themeClasses.forEach((cls) => root.classList.remove(cls))
+    
+    // Add current theme class
+    root.classList.add(theme)
   }, [theme, mounted])
 
-  const value = {
+  const setTheme = useCallback((newTheme: ThemeId) => {
+    localStorage.setItem(storageKey, newTheme)
+    setThemeState(newTheme)
+    // Theme and visualizer colors are now independent - no auto-sync
+  }, [storageKey])
+
+  const setVisualizerPreset = useCallback((presetId: string) => {
+    if (visualizerPresets[presetId]) {
+      localStorage.setItem(`${storageKey}-visualizer`, presetId)
+      setVisualizerPresetState(presetId)
+    }
+  }, [storageKey])
+
+  const themeDefinition = getTheme(theme)
+  const visualizerColors = getVisualizerPreset(visualizerPreset)
+
+  const value: ThemeProviderState = {
     theme,
-    setTheme: (newTheme: Theme) => {
-      localStorage.setItem(storageKey, newTheme)
-      setTheme(newTheme)
-    },
+    visualizerPreset,
+    visualizerColors,
+    setTheme,
+    setVisualizerPreset,
+    isDark: themeDefinition.isDark,
   }
 
   return (
@@ -77,3 +109,6 @@ export const useTheme = () => {
   }
   return context
 }
+
+// Export visualizer presets for UI components
+export { visualizerPresets }

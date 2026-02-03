@@ -2,19 +2,49 @@
 
 import { useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
+import { VisualizerColors } from "@/lib/themes/types"
 
 interface AudioOrbProps {
   isPlaying: boolean
   audioData?: Uint8Array | null
   size?: number
   className?: string
+  colors?: VisualizerColors
+}
+
+// Default colors (indigo theme)
+const defaultColors: VisualizerColors = {
+  primary: "#6366f1",
+  secondary: "#8b5cf6",
+  tertiary: "#a855f7",
+  glow: "rgba(139, 92, 246, 0.6)",
+  background: "rgba(99, 102, 241, 0.1)",
+  highlight: "#ec4899",
+}
+
+// Helper to convert hex to rgba
+function hexToRgba(hex: string, alpha: number): string {
+  // Handle rgba strings directly
+  if (hex.startsWith("rgba") || hex.startsWith("rgb")) {
+    return hex
+  }
+  
+  // Remove # if present
+  hex = hex.replace("#", "")
+  
+  const r = parseInt(hex.substring(0, 2), 16)
+  const g = parseInt(hex.substring(2, 4), 16)
+  const b = parseInt(hex.substring(4, 6), 16)
+  
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 export function AudioOrb({ 
   isPlaying, 
   audioData, 
   size = 300, 
-  className 
+  className,
+  colors = defaultColors,
 }: AudioOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
@@ -53,13 +83,13 @@ export function AudioOrb({
 
     if (isPlaying) {
       const intensity = 0.3 + avgLevel * 0.7
-      gradient.addColorStop(0, `rgba(99, 102, 241, ${intensity})`)
-      gradient.addColorStop(0.5, `rgba(139, 92, 246, ${intensity * 0.8})`)
-      gradient.addColorStop(1, `rgba(168, 85, 247, ${intensity * 0.6})`)
+      gradient.addColorStop(0, hexToRgba(colors.primary, intensity))
+      gradient.addColorStop(0.5, hexToRgba(colors.secondary, intensity * 0.8))
+      gradient.addColorStop(1, hexToRgba(colors.tertiary, intensity * 0.6))
     } else {
-      gradient.addColorStop(0, "rgba(99, 102, 241, 0.3)")
-      gradient.addColorStop(0.5, "rgba(139, 92, 246, 0.2)")
-      gradient.addColorStop(1, "rgba(168, 85, 247, 0.1)")
+      gradient.addColorStop(0, hexToRgba(colors.primary, 0.3))
+      gradient.addColorStop(0.5, hexToRgba(colors.secondary, 0.2))
+      gradient.addColorStop(1, hexToRgba(colors.tertiary, 0.1))
     }
 
     // Draw segmented orb
@@ -89,10 +119,10 @@ export function AudioOrb({
       ctx.fillStyle = gradient
       ctx.fill()
 
-      // Add glow effect
+      // Add glow effect using theme glow color
       if (isPlaying) {
         ctx.shadowBlur = 20 + avgLevel * 30
-        ctx.shadowColor = "rgba(139, 92, 246, 0.5)"
+        ctx.shadowColor = colors.glow
       }
     }
 
@@ -108,7 +138,7 @@ export function AudioOrb({
     ctx.shadowBlur = 0
 
     animationRef.current = requestAnimationFrame(drawOrb)
-  }, [isPlaying, audioData, size])
+  }, [isPlaying, audioData, size, colors])
 
   useEffect(() => {
     const canvas = canvasRef.current
