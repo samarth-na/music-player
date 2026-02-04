@@ -68,8 +68,15 @@ export function ParticlesVisualizer({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const width = canvas.width / (window.devicePixelRatio || 1)
-    const height = canvas.height / (window.devicePixelRatio || 1)
+    const dpr = window.devicePixelRatio || 1
+    const width = canvas.width / dpr
+    const height = canvas.height / dpr
+
+    // Guard against invalid canvas dimensions to prevent gradient errors
+    if (!width || !height || width <= 0 || height <= 0 || !isFinite(width) || !isFinite(height)) {
+      animationRef.current = requestAnimationFrame(draw)
+      return
+    }
 
     // Fade effect - use a very dark version of background
     ctx.fillStyle = "rgba(10, 10, 10, 0.1)"
@@ -129,7 +136,8 @@ export function ParticlesVisualizer({
     })
 
     // Draw center pulse using primary color
-    const pulseRadius = 30 + avgLevel * 50
+    // Ensure minimum radius for valid gradient
+    const pulseRadius = Math.max(30 + avgLevel * 50, 1)
     const gradient = ctx.createRadialGradient(
       width / 2,
       height / 2,

@@ -40,8 +40,15 @@ export function WaveformVisualizer({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const width = canvas.width / (window.devicePixelRatio || 1)
-    const height = canvas.height / (window.devicePixelRatio || 1)
+    const dpr = window.devicePixelRatio || 1
+    const width = canvas.width / dpr
+    const height = canvas.height / dpr
+
+    // Guard against invalid canvas dimensions
+    if (!width || !height || width <= 0 || height <= 0 || !isFinite(width) || !isFinite(height)) {
+      animationRef.current = requestAnimationFrame(drawWaveform)
+      return
+    }
 
     ctx.clearRect(0, 0, width, height)
 
@@ -63,12 +70,23 @@ export function WaveformVisualizer({
 
       const smoothedValue = isPlaying ? smoothedDataRef.current[i] : smoothedDataRef.current[i] * 0.95
 
-      const barHeight = smoothedValue * height * 0.9
+      // Ensure minimum bar height for gradient validity
+      const barHeight = Math.max(smoothedValue * height * 0.9, 1)
       const x = i * barWidth + gap / 2
       const y = (height - barHeight) / 2
 
       // Create gradient for each bar using theme colors
-      const gradient = ctx.createLinearGradient(x, y + barHeight, x, y)
+      // Ensure all coordinates are finite numbers
+      const gradY1 = isFinite(y + barHeight) ? y + barHeight : 1
+      const gradY2 = isFinite(y) ? y : 0
+      const gradX = isFinite(x) ? x : 0
+      
+      // Ensure y1 !== y2 to create a valid gradient
+      const safeY1 = Math.max(0, gradY1)
+      const safeY2 = Math.max(0, gradY2)
+      const finalY2 = safeY1 === safeY2 ? safeY1 + 1 : safeY2
+      
+      const gradient = ctx.createLinearGradient(gradX, safeY1, gradX, finalY2)
       gradient.addColorStop(0, hexToRgba(colors.primary, 0.8))
       gradient.addColorStop(0.5, hexToRgba(colors.secondary, 0.6))
       gradient.addColorStop(1, hexToRgba(colors.tertiary, 0.4))
@@ -76,7 +94,7 @@ export function WaveformVisualizer({
       ctx.fillStyle = gradient
 
       // Draw rounded bar
-      const radius = actualBarWidth / 2
+      const radius = Math.max(actualBarWidth / 2, 0)
       ctx.beginPath()
       ctx.roundRect(x, y, actualBarWidth, barHeight, radius)
       ctx.fill()

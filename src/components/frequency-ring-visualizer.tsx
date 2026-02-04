@@ -61,11 +61,19 @@ export function FrequencyRingVisualizer({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const width = canvas.width / (window.devicePixelRatio || 1)
-    const height = canvas.height / (window.devicePixelRatio || 1)
+    const dpr = window.devicePixelRatio || 1
+    const width = canvas.width / dpr
+    const height = canvas.height / dpr
+    
+    // Guard against invalid canvas dimensions
+    if (!width || !height || width <= 0 || height <= 0 || !isFinite(width) || !isFinite(height)) {
+      animationRef.current = requestAnimationFrame(draw)
+      return
+    }
+    
     const centerX = width / 2
     const centerY = height / 2
-    const baseRadius = Math.min(width, height) / 3
+    const baseRadius = Math.max(Math.min(width, height) / 3, 1)
 
     ctx.clearRect(0, 0, width, height)
 

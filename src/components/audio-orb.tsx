@@ -57,12 +57,22 @@ export function AudioOrb({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const centerX = canvas.width / 2
-    const centerY = canvas.height / 2
-    const radius = (size / 2) * 0.8
+    const dpr = window.devicePixelRatio || 1
+    const canvasWidth = canvas.width / dpr
+    const canvasHeight = canvas.height / dpr
+
+    // Guard against invalid canvas dimensions to prevent gradient errors
+    if (!canvasWidth || !canvasHeight || canvasWidth <= 0 || canvasHeight <= 0 || !isFinite(canvasWidth) || !isFinite(canvasHeight)) {
+      animationRef.current = requestAnimationFrame(drawOrb)
+      return
+    }
+
+    const centerX = canvasWidth / 2
+    const centerY = canvasHeight / 2
+    const radius = Math.min(canvasWidth, canvasHeight) / 2 * 0.8
 
     // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
     // Get average audio level
     let avgLevel = 0
@@ -76,9 +86,11 @@ export function AudioOrb({
       rotationRef.current += 0.01 + (avgLevel * 0.02)
     }
 
+    // Ensure valid radius for gradient
+    const safeRadius = Math.max(radius, 1)
     const gradient = ctx.createRadialGradient(
       centerX, centerY, 0,
-      centerX, centerY, radius
+      centerX, centerY, safeRadius
     )
 
     if (isPlaying) {

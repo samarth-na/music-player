@@ -25,12 +25,12 @@ const themeIcons: Record<ThemeId, React.ComponentType<{ className?: string }>> =
 
 // Primary color swatch for visual preview
 const themeSwatches: Record<ThemeId, string> = {
-  dark: "#6366f1",
-  light: "#4f46e5",
-  neon: "#00ffff",
-  minimal: "#ffffff",
-  sunset: "#ff6b6b",
-  forest: "#10b981",
+  dark: "#7c3aed",
+  light: "#d97706",
+  neon: "#ff00ff",
+  minimal: "#000000",
+  sunset: "#ff4500",
+  forest: "#00a86b",
 }
 
 export function ThemeToggle({ className }: { className?: string }) {

@@ -37,11 +37,19 @@ export function CircularVisualizer({
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    const width = canvas.width / (window.devicePixelRatio || 1)
-    const height = canvas.height / (window.devicePixelRatio || 1)
+    const dpr = window.devicePixelRatio || 1
+    const width = canvas.width / dpr
+    const height = canvas.height / dpr
+    
+    // Guard against invalid canvas dimensions
+    if (!width || !height || width <= 0 || height <= 0 || !isFinite(width) || !isFinite(height)) {
+      animationRef.current = requestAnimationFrame(draw)
+      return
+    }
+    
     const centerX = width / 2
     const centerY = height / 2
-    const radius = Math.min(width, height) / 2 - 20
+    const radius = Math.max(Math.min(width, height) / 2 - 20, 1)
 
     ctx.clearRect(0, 0, width, height)
 
@@ -63,7 +71,8 @@ export function CircularVisualizer({
     // Draw circular bars
     for (let i = 0; i < bars; i++) {
       const value = isPlaying ? values[i] : values[i] * 0.95
-      const barHeight = value * radius * 0.8
+      // Ensure minimum bar height for gradient validity
+      const barHeight = Math.max(value * radius * 0.8, 1)
       const angle = i * angleStep - Math.PI / 2
 
       const innerRadius = radius * 0.2
@@ -72,8 +81,14 @@ export function CircularVisualizer({
       const x2 = centerX + Math.cos(angle) * (innerRadius + barHeight)
       const y2 = centerY + Math.sin(angle) * (innerRadius + barHeight)
 
-      // Create gradient using theme colors
-      const gradient = ctx.createLinearGradient(x1, y1, x2, y2)
+      // Create gradient using theme colors - ensure valid coordinates
+      const dx = x2 - x1
+      const dy = y2 - y1
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      // If points are too close, offset slightly to avoid invalid gradient
+      const safeX2 = dist < 1 ? x1 + 1 : x2
+      const safeY2 = dist < 1 ? y1 + 1 : y2
+      const gradient = ctx.createLinearGradient(x1, y1, safeX2, safeY2)
       gradient.addColorStop(0, hexToRgba(colors.primary, 0.8))
       gradient.addColorStop(0.5, hexToRgba(colors.secondary, 0.6))
       gradient.addColorStop(1, hexToRgba(colors.highlight, 0.4))

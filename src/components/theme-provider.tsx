@@ -51,11 +51,16 @@ export function ThemeProvider({
     
     if (storedTheme && themeClasses.includes(storedTheme as typeof themeClasses[number])) {
       setThemeState(storedTheme)
+    } else {
+      // Apply default theme even if nothing is stored
+      const root = window.document.documentElement
+      themeClasses.forEach((cls) => root.classList.remove(cls))
+      root.classList.add(defaultTheme)
     }
     if (storedVisualizerPreset && visualizerPresets[storedVisualizerPreset]) {
       setVisualizerPresetState(storedVisualizerPreset)
     }
-  }, [storageKey])
+  }, [storageKey, defaultTheme])
 
   // Apply theme class to document
   useEffect(() => {

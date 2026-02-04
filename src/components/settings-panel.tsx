@@ -20,7 +20,7 @@ import { themeList } from "@/lib/themes/presets"
 import { ThemeId } from "@/lib/themes/types"
 
 export type VisualizerType = "waveform" | "circular" | "rings" | "particles"
-export type LayoutType = "default" | "compact" | "theater"
+export type LayoutType = "default" | "compact" | "theater" | "vertical" | "split"
 
 interface SettingsPanelProps {
   currentVisualizer: VisualizerType
@@ -38,9 +38,11 @@ const visualizers = [
 ]
 
 const layouts = [
-  { id: "default" as LayoutType, label: "Default", icon: Monitor, description: "Full player with sidebar" },
+  { id: "default" as LayoutType, label: "Default", icon: Monitor, description: "Sidebar + Player + Visualizer" },
   { id: "compact" as LayoutType, label: "Compact", icon: Minimize2, description: "Minimal controls only" },
   { id: "theater" as LayoutType, label: "Theater", icon: Maximize2, description: "Fullscreen visualizer" },
+  { id: "vertical" as LayoutType, label: "Vertical", icon: LayoutGrid, description: "Stacked vertically" },
+  { id: "split" as LayoutType, label: "Split", icon: LayoutGrid, description: "Playlist + Player side by side" },
 ]
 
 // Visualizer preset options
@@ -55,12 +57,12 @@ const visualizerPresetOptions = [
 
 // Theme color swatches for visual preview
 const themeSwatches: Record<ThemeId, string> = {
-  dark: "#6366f1",
-  light: "#4f46e5",
-  neon: "#00ffff",
-  minimal: "#ffffff",
-  sunset: "#ff6b6b",
-  forest: "#10b981",
+  dark: "#7c3aed",
+  light: "#d97706",
+  neon: "#ff00ff",
+  minimal: "#000000",
+  sunset: "#ff4500",
+  forest: "#00a86b",
 }
 
 export function SettingsPanel({
@@ -97,15 +99,15 @@ export function SettingsPanel({
             onClick={() => setIsOpen(false)}
           />
 
-          {/* Panel */}
-          <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-2xl z-50 overflow-hidden">
+          {/* Panel - positioned to stay within viewport */}
+          <div className="fixed right-4 top-16 w-80 max-h-[calc(100vh-5rem)] bg-card border border-border rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="px-4 py-3 border-b border-border">
+            <div className="px-5 py-4 border-b border-border flex-shrink-0">
               <h3 className="text-sm font-semibold text-foreground">Settings</h3>
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-border">
+            <div className="flex border-b border-border flex-shrink-0">
               {[
                 { id: "visualizer", label: "Visualizer", icon: Waves },
                 { id: "theme", label: "Theme", icon: Palette },
@@ -127,8 +129,8 @@ export function SettingsPanel({
               ))}
             </div>
 
-            {/* Content */}
-            <div className="p-4 max-h-[400px] overflow-y-auto">
+            {/* Content - scrollable */}
+            <div className="p-5 overflow-y-auto flex-1">
               {/* Visualizer Options */}
               {activeTab === "visualizer" && (
                 <div className="space-y-5">

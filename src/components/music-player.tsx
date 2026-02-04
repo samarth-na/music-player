@@ -20,7 +20,11 @@ import {
   Upload,
   Keyboard,
   BarChart3,
-  PlayCircle
+  PlayCircle,
+  PanelLeftClose,
+  PanelLeft,
+  Maximize2,
+  Minimize2
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -63,6 +67,9 @@ export function MusicPlayer() {
   // Visualizer and Layout states (Theme is managed by ThemeProvider)
   const [currentVisualizer, setCurrentVisualizer] = useState<VisualizerType>("waveform")
   const [currentLayout, setCurrentLayout] = useState<LayoutType>("default")
+  const [showControls, setShowControls] = useState(true)
+  const [isMouseIdle, setIsMouseIdle] = useState(false)
+  const mouseIdleTimerRef = useRef<NodeJS.Timeout | null>(null)
   
   // Get visualizer colors from theme context
   const { visualizerColors } = useTheme()
@@ -457,6 +464,39 @@ export function MusicPlayer() {
     }
   }, [])
 
+  // Mouse idle detection for theater mode
+  useEffect(() => {
+    if (currentLayout !== "theater") {
+      setIsMouseIdle(false)
+      setShowControls(true)
+      return
+    }
+
+    const handleMouseMove = () => {
+      setIsMouseIdle(false)
+      setShowControls(true)
+      
+      if (mouseIdleTimerRef.current) {
+        clearTimeout(mouseIdleTimerRef.current)
+      }
+      
+      mouseIdleTimerRef.current = setTimeout(() => {
+        setIsMouseIdle(true)
+        setShowControls(false)
+      }, 3000) // Hide after 3 seconds of no mouse movement
+    }
+
+    window.addEventListener("mousemove", handleMouseMove)
+    handleMouseMove() // Initialize timer
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      if (mouseIdleTimerRef.current) {
+        clearTimeout(mouseIdleTimerRef.current)
+      }
+    }
+  }, [currentLayout])
+
   const currentFile = currentIndex >= 0 ? files[currentIndex] : null
   const currentStats = currentFile ? trackStats[currentFile.name] : null
 
@@ -473,8 +513,20 @@ export function MusicPlayer() {
     return files.findIndex(f => f.id === filteredFile.id)
   }
 
+  // Computed values for layout
+  const showSidebar = currentLayout === "default" || currentLayout === "split" || currentLayout === "vertical"
+  const isTheaterMode = currentLayout === "theater"
+  const isCompactMode = currentLayout === "compact"
+  const isVerticalMode = currentLayout === "vertical"
+  const isSplitMode = currentLayout === "split"
+
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-white overflow-hidden font-sans">
+    <div className={cn(
+      "flex h-screen bg-background text-foreground overflow-hidden font-sans transition-all duration-300",
+      isTheaterMode && "cursor-none",
+      isTheaterMode && !isMouseIdle && "cursor-auto",
+      isVerticalMode && "flex-col"
+    )}>
       {/* Audio element */}
       <audio
         ref={audioRef}
@@ -484,31 +536,42 @@ export function MusicPlayer() {
         crossOrigin="anonymous"
       />
 
-      {/* Left Sidebar - Playlist */}
-      <div className="w-80 flex flex-col bg-[#0f0f0f] border-r border-white/5">
-        {/* Header */}
-        <div className="p-6 border-b border-white/5">
+      {/* Fixed Settings Button - Right Side */}
+      <div className="fixed right-6 top-6 z-30">
+        <SettingsPanel
+          currentVisualizer={currentVisualizer}
+          onVisualizerChange={setCurrentVisualizer}
+          currentLayout={currentLayout}
+          onLayoutChange={setCurrentLayout}
+        />
+      </div>
+
+       {/* Left Sidebar - Playlist (hidden in compact/theater, top in vertical) */}
+       <div className={cn(
+          "flex flex-col border-border transition-all duration-300",
+          isVerticalMode 
+            ? "w-full h-48 bg-transparent border-b" 
+            : "bg-card border-r",
+          showSidebar && !isVerticalMode ? (isSplitMode ? "w-1/2" : "w-80") : (!isVerticalMode && "w-0 opacity-0 pointer-events-none overflow-hidden")
+        )}>
+        {/* Header - Hidden in vertical mode */}
+        {!isVerticalMode && (
+        <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-lg flex items-center gap-2 text-white/90">
-              <ListMusic className="w-5 h-5 text-indigo-400" />
+            <h2 className="font-semibold text-lg flex items-center gap-2 text-foreground/90">
+              <ListMusic className="w-5 h-5 text-primary" />
               <span className="tracking-tight">Playlist</span>
             </h2>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/shortcuts"
-                className="p-2 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-all"
-                title="Keyboard Shortcuts"
-              >
-                <Keyboard className="w-5 h-5" />
-              </Link>
-              <ThemeToggle className="text-white/60 hover:text-white" />
-              <SettingsPanel
-                currentVisualizer={currentVisualizer}
-                onVisualizerChange={setCurrentVisualizer}
-                currentLayout={currentLayout}
-                onLayoutChange={setCurrentLayout}
-              />
-            </div>
+             <div className="flex items-center gap-2">
+               <Link
+                 href="/shortcuts"
+                 className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
+                 title="Keyboard Shortcuts"
+               >
+                 <Keyboard className="w-5 h-5" />
+               </Link>
+               <ThemeToggle className="text-muted-foreground hover:text-foreground" />
+             </div>
           </div>
           
           <input
@@ -533,9 +596,9 @@ export function MusicPlayer() {
           <Button
             onClick={() => fileInputRef.current?.click()}
             variant="outline"
-            className="w-full bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all duration-200 mb-2"
+            className="w-full bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200 mb-2"
           >
-            <FolderOpen className="w-4 h-4 mr-2 text-indigo-400" />
+            <FolderOpen className="w-4 h-4 mr-2 text-primary" />
             Open Folder
           </Button>
 
@@ -545,16 +608,16 @@ export function MusicPlayer() {
                 onClick={handleExport}
                 variant="outline"
                 size="sm"
-                className="flex-1 bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all duration-200"
+                className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
               >
-                <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-400" />
+                <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
                 Export
               </Button>
               <Button
                 onClick={() => importInputRef.current?.click()}
                 variant="outline"
                 size="sm"
-                className="flex-1 bg-white/5 border-white/10 text-white/80 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all duration-200"
+                className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
               >
                 <Upload className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
                 Import
@@ -562,13 +625,37 @@ export function MusicPlayer() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Search & Filter */}
-        {files.length > 0 && (
-          <div className="px-4 py-3 border-b border-white/5 space-y-2">
+        {/* Hidden inputs for vertical mode */}
+        {isVerticalMode && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              // @ts-ignore
+              webkitdirectory=""
+              directory=""
+              multiple
+              onChange={handleFolderSelect}
+              className="hidden"
+            />
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleImport}
+              className="hidden"
+            />
+          </>
+        )}
+
+        {/* Search & Filter - Hidden in vertical mode */}
+        {files.length > 0 && !isVerticalMode && (
+          <div className="px-4 py-3 border-b border-border space-y-2">
             {/* Search Input */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -577,12 +664,12 @@ export function MusicPlayer() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
                 onBlur={() => setIsSearchFocused(false)}
-                className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-indigo-500/50 transition-colors"
+                className="w-full bg-muted/50 border border-border rounded-lg pl-9 pr-8 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/60"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -596,8 +683,8 @@ export function MusicPlayer() {
                 className={cn(
                   "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all",
                   !showOnlyLiked 
-                    ? "bg-white/10 text-white" 
-                    : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                    ? "bg-muted text-foreground" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
                 All
@@ -608,7 +695,7 @@ export function MusicPlayer() {
                   "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1",
                   showOnlyLiked 
                     ? "bg-rose-500/20 text-rose-400" 
-                    : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                 )}
               >
                 <Heart className="w-3 h-3" />
@@ -618,30 +705,79 @@ export function MusicPlayer() {
           </div>
         )}
 
-        {/* Folder Name */}
-        {folderName && (
-          <div className="px-6 py-2 text-xs text-white/40 font-medium uppercase tracking-wider border-b border-white/5">
+        {/* Folder Name - Hidden in vertical mode */}
+        {folderName && !isVerticalMode && (
+          <div className="px-6 py-2 text-xs text-muted-foreground font-medium uppercase tracking-wider border-b border-border">
             {folderName}
           </div>
         )}
 
-        {/* File List */}
-        <div className="flex-1 overflow-y-auto">
+        {/* File List - Horizontal scroll in vertical mode */}
+        <div className={cn(
+          "flex-1",
+          isVerticalMode ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto"
+        )}>
           {files.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-white/30 p-6">
-              <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                <Music className="w-8 h-8" />
+            <div className={cn(
+              "flex items-center justify-center h-full text-muted-foreground",
+              isVerticalMode ? "flex-row gap-4 px-6" : "flex-col p-6"
+            )}>
+              <div className={cn(
+                "rounded-full bg-muted flex items-center justify-center",
+                isVerticalMode ? "w-10 h-10" : "w-16 h-16 mb-4"
+              )}>
+                <Music className={cn(isVerticalMode ? "w-5 h-5" : "w-8 h-8")} />
               </div>
               <p className="text-center text-sm">
                 Select a folder to load your music
               </p>
+              {isVerticalMode && (
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  variant="outline"
+                  size="sm"
+                  className="ml-4 bg-muted/50 border-border"
+                >
+                  <FolderOpen className="w-4 h-4 mr-2 text-primary" />
+                  Open Folder
+                </Button>
+              )}
             </div>
           ) : filteredFiles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-white/30 p-6">
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
               <Search className="w-8 h-8 mb-3" />
               <p className="text-center text-sm">
                 No tracks found
               </p>
+            </div>
+          ) : isVerticalMode ? (
+            /* Horizontal track list for vertical mode */
+            <div className="flex gap-2 px-4 py-2 h-full items-center">
+              {filteredFiles.map((file, filteredIndex) => {
+                const originalIndex = getOriginalIndex(filteredIndex)
+                return (
+                  <button
+                    key={file.id}
+                    onClick={() => playFile(originalIndex)}
+                    className={cn(
+                      "flex-shrink-0 px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm",
+                      currentIndex === originalIndex 
+                        ? "bg-primary/20 text-primary border border-primary/30" 
+                        : "bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground border border-transparent"
+                    )}
+                  >
+                    {currentIndex === originalIndex && isPlaying && (
+                      <div className="flex gap-0.5 items-end h-3">
+                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
+                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
+                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
+                      </div>
+                    )}
+                    <span className="truncate max-w-48">{file.name}</span>
+                    {file.liked && <Heart className="w-3 h-3 fill-rose-500 text-rose-500 flex-shrink-0" />}
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <div className="divide-y divide-white/5">
@@ -653,20 +789,20 @@ export function MusicPlayer() {
                     key={file.id}
                     onClick={() => playFile(originalIndex)}
                     className={cn(
-                      "group px-4 py-3 hover:bg-white/5 transition-all duration-200 cursor-pointer flex items-center gap-3",
-                      currentIndex === originalIndex && "bg-white/10 hover:bg-white/10"
+                      "group px-4 py-3 hover:bg-muted/50 transition-all duration-200 cursor-pointer flex items-center gap-3",
+                      currentIndex === originalIndex && "bg-muted hover:bg-muted"
                     )}
                   >
                     {/* Track Number / Playing Indicator */}
                     <div className="w-8 flex items-center justify-center">
                       {currentIndex === originalIndex && isPlaying ? (
                         <div className="flex gap-0.5 items-end h-4">
-                          <span className="w-1 bg-indigo-400 animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
-                          <span className="w-1 bg-indigo-400 animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
-                          <span className="w-1 bg-indigo-400 animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
+                          <span className="w-1 bg-primary animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
+                          <span className="w-1 bg-primary animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
+                          <span className="w-1 bg-primary animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
                         </div>
                       ) : (
-                        <span className="text-white/30 text-sm font-medium group-hover:text-white/50">
+                        <span className="text-muted-foreground text-sm font-medium group-hover:text-foreground/50">
                           {originalIndex + 1}
                         </span>
                       )}
@@ -676,12 +812,12 @@ export function MusicPlayer() {
                     <div className="flex-1 min-w-0">
                       <span className={cn(
                         "block truncate text-sm font-medium",
-                        currentIndex === originalIndex ? "text-white" : "text-white/60 group-hover:text-white/80"
+                        currentIndex === originalIndex ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"
                       )}>
                         {file.name}
                       </span>
                       {stats && stats.playCount > 0 && (
-                        <div className="flex items-center gap-2 text-xs text-white/30 mt-0.5">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                           <span className="flex items-center gap-1">
                             <PlayCircle className="w-3 h-3" />
                             {stats.playCount} {stats.playCount === 1 ? 'play' : 'plays'}
@@ -701,14 +837,14 @@ export function MusicPlayer() {
                       <Heart 
                         className={cn(
                           "w-4 h-4 transition-colors",
-                          file.liked ? "fill-rose-500 text-rose-500" : "text-white/30 hover:text-white/60"
+                          file.liked ? "fill-rose-500 text-rose-500" : "text-muted-foreground hover:text-foreground"
                         )} 
                       />
                     </button>
 
                     {/* Active Indicator */}
                     {currentIndex === originalIndex && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
                     )}
                   </div>
                 )
@@ -719,8 +855,8 @@ export function MusicPlayer() {
 
         {/* Track Count & Stats Toggle */}
         {files.length > 0 && (
-          <div className="p-4 border-t border-white/5">
-            <div className="flex items-center justify-between text-xs text-white/30">
+          <div className="p-4 border-t border-border">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 {filteredFiles.length} of {files.length} {files.length === 1 ? "track" : "tracks"}
                 {searchQuery && ` matching "${searchQuery}"`}
@@ -729,7 +865,7 @@ export function MusicPlayer() {
                 onClick={() => setShowStats(!showStats)}
                 className={cn(
                   "p-1.5 rounded-md transition-colors",
-                  showStats ? "text-indigo-400 bg-indigo-500/20" : "hover:text-white/60 hover:bg-white/5"
+                  showStats ? "text-primary bg-primary/20" : "hover:text-foreground hover:bg-muted"
                 )}
               >
                 <BarChart3 className="w-4 h-4" />
@@ -739,19 +875,55 @@ export function MusicPlayer() {
         )}
       </div>
 
-      {/* Main Player Area */}
-      <div className="flex-1 flex flex-col relative">
-        {/* Glass Background Effect */}
-        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/10 via-purple-900/5 to-transparent pointer-events-none" />
+       {/* Main Player Area */}
+       <div className={cn(
+         "flex-1 flex relative",
+         isVerticalMode ? "flex-col" : "flex-col"
+       )}>
+         {/* Glass Background Effect */}
+         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent pointer-events-none" />
+        
+        {/* Floating Controls Header for Compact/Theater modes */}
+        {!showSidebar && (
+          <div className={cn(
+            "absolute top-0 left-0 right-0 z-20 p-4 flex items-center justify-between transition-all duration-300",
+            isTheaterMode && isMouseIdle && "opacity-0 pointer-events-none"
+          )}>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setCurrentLayout("default")}
+                className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-all"
+                title="Show Sidebar"
+              >
+                <PanelLeft className="w-5 h-5" />
+              </button>
+              {currentFile && (
+                <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg px-4 py-2">
+                  <p className="text-sm font-medium text-foreground truncate max-w-md">{currentFile.name}</p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+            </div>
+          </div>
+        )}
         
         {/* Visualizer Section */}
         <div 
-          className="flex-1 flex flex-col items-center justify-center relative px-8"
+          className={cn(
+            "flex flex-col items-center justify-center relative px-8",
+            isTheaterMode && "px-0",
+            isVerticalMode ? "h-64 flex-shrink-0" : "flex-1"
+          )}
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
         >
           {/* Dynamic Visualizer */}
-          <div className="w-full h-full flex items-center justify-center">
+          <div className={cn(
+            "w-full h-full flex items-center justify-center",
+            isTheaterMode && "scale-125"
+          )}>
             {currentVisualizer === "waveform" && (
               <>
                 {/* Central Orb */}
@@ -759,24 +931,27 @@ export function MusicPlayer() {
                   <AudioOrb 
                     isPlaying={isPlaying} 
                     audioData={audioData} 
-                    size={280}
+                    size={isTheaterMode ? 420 : 320}
                     className="drop-shadow-[0_0_40px_rgba(99,102,241,0.3)]"
                     colors={visualizerColors}
                   />
                   
                   {/* Glow ring */}
                   <div className={cn(
-                    "absolute inset-0 rounded-full border border-white/10 transition-all duration-500",
+                    "absolute inset-0 rounded-full border border-border/50 transition-all duration-500",
                     isPlaying && "scale-110 opacity-50"
                   )} />
                 </div>
 
                 {/* Waveform Visualizer */}
-                <div className="w-full max-w-2xl px-8 h-24 absolute bottom-32">
+                <div className={cn(
+                  "w-full max-w-3xl px-8 h-32 absolute",
+                  isTheaterMode ? "bottom-48 max-w-5xl h-40" : "bottom-32"
+                )}>
                   <WaveformVisualizer
                     audioData={audioData}
                     isPlaying={isPlaying}
-                    barCount={80}
+                    barCount={isTheaterMode ? 140 : 100}
                     className="opacity-80"
                     colors={visualizerColors}
                   />
@@ -785,7 +960,10 @@ export function MusicPlayer() {
             )}
 
             {currentVisualizer === "circular" && (
-              <div className="w-full max-w-2xl h-96">
+              <div className={cn(
+                "w-full h-[450px]",
+                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
+              )}>
                 <CircularVisualizer
                   audioData={audioData}
                   isPlaying={isPlaying}
@@ -796,7 +974,10 @@ export function MusicPlayer() {
             )}
 
             {currentVisualizer === "rings" && (
-              <div className="w-full max-w-2xl h-96">
+              <div className={cn(
+                "w-full h-[450px]",
+                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
+              )}>
                 <FrequencyRingVisualizer
                   audioData={audioData}
                   isPlaying={isPlaying}
@@ -807,7 +988,10 @@ export function MusicPlayer() {
             )}
 
             {currentVisualizer === "particles" && (
-              <div className="w-full max-w-2xl h-96">
+              <div className={cn(
+                "w-full h-[450px]",
+                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
+              )}>
                 <ParticlesVisualizer
                   audioData={audioData}
                   isPlaying={isPlaying}
@@ -819,13 +1003,19 @@ export function MusicPlayer() {
           </div>
 
           {/* Track Info Overlay */}
-          <div className="mt-8 text-center">
+          <div className={cn(
+            "mt-8 text-center transition-all duration-300",
+            isTheaterMode && isMouseIdle && "opacity-0"
+          )}>
             {currentFile ? (
               <>
-                <h1 className="text-2xl font-bold text-white mb-2 tracking-tight">
+                <h1 className={cn(
+                  "font-bold text-foreground mb-2 tracking-tight",
+                  isTheaterMode ? "text-4xl" : "text-2xl"
+                )}>
                   {currentFile.name}
                 </h1>
-                <div className="flex items-center justify-center gap-4 text-white/40 text-sm">
+                <div className="flex items-center justify-center gap-4 text-muted-foreground text-sm">
                   <span>Track {currentIndex + 1} of {files.length}</span>
                   {currentStats && currentStats.playCount > 0 && (
                     <span className="flex items-center gap-1">
@@ -836,7 +1026,7 @@ export function MusicPlayer() {
                 </div>
               </>
             ) : (
-              <div className="text-white/30">
+              <div className="text-muted-foreground">
                 <p className="text-lg font-medium mb-1">No track selected</p>
                 <p className="text-sm">Open a folder to start listening</p>
               </div>
@@ -845,11 +1035,19 @@ export function MusicPlayer() {
         </div>
 
         {/* Player Controls Section */}
-        <div className="pb-48 bg-gradient-to-t from-black/50 to-transparent">
+        <div className={cn(
+          "bg-gradient-to-t from-background/50 to-transparent transition-all duration-300",
+          isTheaterMode && isMouseIdle && "opacity-0 pointer-events-none",
+          isVerticalMode ? "flex-1 flex flex-col justify-end pb-6" : "pb-48",
+          isCompactMode && "pb-8"
+        )}>
           {/* Progress Bar */}
-          <div className="max-w-3xl mx-auto mb-6">
+          <div className={cn(
+            "max-w-3xl mx-auto mb-6 px-4",
+            isTheaterMode && "max-w-5xl"
+          )}>
             <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs text-white/40 font-medium tabular-nums w-10 text-right">
+              <span className="text-xs text-muted-foreground font-medium tabular-nums w-10 text-right">
                 {formatTime(currentTime)}
               </span>
               <Slider
@@ -859,14 +1057,17 @@ export function MusicPlayer() {
                 onValueChange={handleSeek}
                 className="flex-1"
               />
-              <span className="text-xs text-white/40 font-medium tabular-nums w-10">
+              <span className="text-xs text-muted-foreground font-medium tabular-nums w-10">
                 {formatTime(duration)}
               </span>
             </div>
           </div>
 
           {/* Control Buttons */}
-          <div className="max-w-3xl mx-auto flex items-center justify-between">
+          <div className={cn(
+            "max-w-3xl mx-auto flex items-center justify-between px-4",
+            isTheaterMode && "max-w-5xl"
+          )}>
             {/* Left Controls */}
             <div className="flex items-center gap-2">
               <Button
@@ -874,8 +1075,8 @@ export function MusicPlayer() {
                 size="icon"
                 onClick={() => setIsShuffle(!isShuffle)}
                 className={cn(
-                  "rounded-full hover:bg-white/10 transition-all",
-                  isShuffle ? "text-indigo-400" : "text-white/40"
+                  "rounded-full hover:bg-muted transition-all",
+                  isShuffle ? "text-primary" : "text-muted-foreground"
                 )}
               >
                 <Shuffle className="w-4 h-4" />
@@ -885,8 +1086,8 @@ export function MusicPlayer() {
                 size="icon"
                 onClick={() => setIsRepeat(!isRepeat)}
                 className={cn(
-                  "rounded-full hover:bg-white/10 transition-all",
-                  isRepeat ? "text-indigo-400" : "text-white/40"
+                  "rounded-full hover:bg-muted transition-all",
+                  isRepeat ? "text-primary" : "text-muted-foreground"
                 )}
               >
                 <Repeat className="w-4 h-4" />
@@ -900,7 +1101,7 @@ export function MusicPlayer() {
                 size="icon"
                 onClick={playPrevious}
                 disabled={files.length === 0}
-                className="rounded-full hover:bg-white/10 text-white/70 hover:text-white disabled:opacity-30 w-12 h-12"
+                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-12 h-12"
               >
                 <SkipBack className="w-6 h-6" />
               </Button>
@@ -909,7 +1110,7 @@ export function MusicPlayer() {
                 size="lg"
                 onClick={togglePlay}
                 disabled={!currentFile}
-                className="rounded-full w-16 h-16 bg-white text-black hover:bg-white/90 disabled:opacity-30 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all"
+                className="rounded-full w-16 h-16 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all"
               >
                 {isPlaying ? (
                   <Pause className="w-7 h-7" />
@@ -923,7 +1124,7 @@ export function MusicPlayer() {
                 size="icon"
                 onClick={playNext}
                 disabled={files.length === 0}
-                className="rounded-full hover:bg-white/10 text-white/70 hover:text-white disabled:opacity-30 w-12 h-12"
+                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-12 h-12"
               >
                 <SkipForward className="w-6 h-6" />
               </Button>
@@ -935,7 +1136,7 @@ export function MusicPlayer() {
                 variant="ghost"
                 size="icon"
                 onClick={toggleMute}
-                className="rounded-full hover:bg-white/10 text-white/40 hover:text-white"
+                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX className="w-4 h-4" />
@@ -954,7 +1155,7 @@ export function MusicPlayer() {
           </div>
           
           {/* Bottom Padding */}
-          <div className="h-6" />
+          <div className={cn("h-6", isCompactMode && "h-2")} />
         </div>
       </div>
 
@@ -967,7 +1168,7 @@ export function MusicPlayer() {
       {/* Keyboard Shortcut Toast */}
       {showToast.visible && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50">
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-4 py-2 text-sm text-white shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="bg-card/80 backdrop-blur-md border border-border rounded-full px-4 py-2 text-sm text-foreground shadow-lg animate-in fade-in slide-in-from-bottom-2 duration-200">
             {showToast.message}
           </div>
         </div>
