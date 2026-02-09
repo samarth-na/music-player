@@ -32,6 +32,7 @@ const shortcuts: KeyboardShortcut[] = [
   // Settings
   { key: "S", description: "Shuffle toggle", category: "Settings" },
   { key: "R", description: "Repeat toggle", category: "Settings" },
+  { key: "T", description: "Theater mode toggle", category: "Settings" },
   
   // Playlist
   { key: "L", description: "Like current track", category: "Playlist" },

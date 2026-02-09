@@ -21,10 +21,9 @@ import {
   Keyboard,
   BarChart3,
   PlayCircle,
-  PanelLeftClose,
-  PanelLeft,
+  Menu,
   Maximize2,
-  Minimize2
+  Minimize2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
@@ -36,12 +35,12 @@ import { WaveformVisualizer } from "@/components/waveform-visualizer"
 import { CircularVisualizer } from "@/components/circular-visualizer"
 import { FrequencyRingVisualizer } from "@/components/frequency-ring-visualizer"
 import { ParticlesVisualizer } from "@/components/particles-visualizer"
-import { SettingsPanel, VisualizerType, LayoutType } from "@/components/settings-panel"
+import { SettingsPanel, VisualizerType } from "@/components/settings-panel"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { AudioFile, TrackStats, FolderData } from "@/lib/persistence"
 import { usePersistence } from "@/lib/persistence/hooks"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { KeyboardHelp } from "@/components/keyboard-help"
-import Link from "next/link"
 
 export function MusicPlayer() {
   const [files, setFiles] = useState<AudioFile[]>([])
@@ -64,12 +63,14 @@ export function MusicPlayer() {
   const [showStats, setShowStats] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   
-  // Visualizer and Layout states (Theme is managed by ThemeProvider)
+  // Visualizer state
   const [currentVisualizer, setCurrentVisualizer] = useState<VisualizerType>("waveform")
-  const [currentLayout, setCurrentLayout] = useState<LayoutType>("default")
-  const [showControls, setShowControls] = useState(true)
-  const [isMouseIdle, setIsMouseIdle] = useState(false)
-  const mouseIdleTimerRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Sidebar state (for mobile drawer)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  
+  // Theater mode (hides sidebar on desktop for immersive view)
+  const [isTheaterMode, setIsTheaterMode] = useState(false)
   
   // Get visualizer colors from theme context
   const { visualizerColors } = useTheme()
@@ -120,7 +121,6 @@ export function MusicPlayer() {
 
   // Apply persisted data to state
   const applyPersistedData = useCallback((data: Partial<FolderData>, audioFiles: AudioFile[]) => {
-    // Restore liked states
     const likedNames = new Set(data.favorites || [])
     const filesWithLikes = audioFiles.map(file => ({
       ...file,
@@ -128,19 +128,16 @@ export function MusicPlayer() {
     }))
     setFiles(filesWithLikes)
 
-    // Restore track stats
     if (data.trackStats) {
       setTrackStats(data.trackStats)
     }
 
-    // Restore last track
     if (data.lastPlayedTrackIndex !== undefined && data.lastPlayedTrackIndex >= 0) {
       setCurrentIndex(data.lastPlayedTrackIndex)
     } else if (audioFiles.length > 0) {
       setCurrentIndex(0)
     }
 
-    // Restore volume
     if (data.volume !== undefined) {
       const newVolume = data.volume
       setVolume(newVolume)
@@ -149,12 +146,10 @@ export function MusicPlayer() {
       }
     }
 
-    // Restore shuffle
     if (data.isShuffle !== undefined) {
       setIsShuffle(data.isShuffle)
     }
 
-    // Restore repeat
     if (data.isRepeat !== undefined) {
       setIsRepeat(data.isRepeat)
     }
@@ -195,16 +190,13 @@ export function MusicPlayer() {
       }
     })
 
-    // Try to load from JSON file first
     const jsonData = await loadFromJsonFile(selectedFiles, audioFiles)
     if (jsonData && jsonData.folderData) {
       applyPersistedData(jsonData.folderData, audioFiles)
-      // Apply global history if present
       if (jsonData.globalHistory) {
         await persistence.applyImportedData(jsonData)
       }
     } else {
-      // Try to load from IndexedDB
       const dbData = await persistence.loadState(folderPath, audioFiles)
       if (dbData) {
         applyPersistedData(dbData, audioFiles)
@@ -223,7 +215,7 @@ export function MusicPlayer() {
     if (folderName === "" || files.length === 0) return
 
     persistence.saveState({
-      folderId: "", // Will be generated internally
+      folderId: "",
       folderName,
       files,
       currentIndex,
@@ -274,7 +266,6 @@ export function MusicPlayer() {
       const data = await persistence.importFolderData(text, files)
       if (data) {
         applyPersistedData(data.folderData, files)
-        // Apply global history if present
         if (data.globalHistory) {
           await persistence.applyImportedData(data)
         }
@@ -284,7 +275,6 @@ export function MusicPlayer() {
       alert('Failed to import settings file')
     }
 
-    // Reset input
     event.target.value = ''
   }, [files, applyPersistedData, persistence])
 
@@ -315,7 +305,6 @@ export function MusicPlayer() {
       setIsPlaying(true)
       initAudioContext()
       updateVisualizer()
-      // Record play start time
       playStartTimeRef.current = Date.now()
     }
   }, [files, initAudioContext, updateVisualizer])
@@ -369,11 +358,9 @@ export function MusicPlayer() {
 
   // Handle track ended
   const handleEnded = useCallback(async () => {
-    // Track play completion
     if (folderName && files.length > 0 && currentIndex >= 0) {
       const playTime = audioRef.current ? audioRef.current.currentTime : 0
       await persistence.trackPlay(folderName, files, currentIndex, playTime)
-      // Update stats display
       const stats = await persistence.getTrackStats(folderName, files)
       setTrackStats(stats)
     }
@@ -420,6 +407,21 @@ export function MusicPlayer() {
     }
   }, [isMuted, volume])
 
+  // Skip forward/backward
+  const skipForward = useCallback((seconds: number) => {
+    if (!audioRef.current) return
+    const newTime = Math.min(audioRef.current.currentTime + seconds, audioRef.current.duration || 0)
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+  }, [])
+
+  const skipBackward = useCallback((seconds: number) => {
+    if (!audioRef.current) return
+    const newTime = Math.max(audioRef.current.currentTime - seconds, 0)
+    audioRef.current.currentTime = newTime
+    setCurrentTime(newTime)
+  }, [])
+
   // Keyboard shortcut handlers
   const handleVolumeUp = useCallback(() => handleVolumeChange([Math.min(volume + 0.1, 1)]), [volume, handleVolumeChange])
   const handleVolumeDown = useCallback(() => handleVolumeChange([Math.max(volume - 0.1, 0)]), [volume, handleVolumeChange])
@@ -445,6 +447,7 @@ export function MusicPlayer() {
     onMuteToggle: toggleMute,
     onShuffleToggle: () => setIsShuffle(prev => !prev),
     onRepeatToggle: () => setIsRepeat(prev => !prev),
+    onTheaterToggle: () => setIsTheaterMode(prev => !prev),
     onLikeToggle: toggleCurrentLike,
     onFocusSearch: handleFocusSearch,
     onClearSearch: handleClearSearch,
@@ -463,40 +466,7 @@ export function MusicPlayer() {
       }
     }
   }, [])
-
-  // Mouse idle detection for theater mode
-  useEffect(() => {
-    if (currentLayout !== "theater") {
-      setIsMouseIdle(false)
-      setShowControls(true)
-      return
-    }
-
-    const handleMouseMove = () => {
-      setIsMouseIdle(false)
-      setShowControls(true)
-      
-      if (mouseIdleTimerRef.current) {
-        clearTimeout(mouseIdleTimerRef.current)
-      }
-      
-      mouseIdleTimerRef.current = setTimeout(() => {
-        setIsMouseIdle(true)
-        setShowControls(false)
-      }, 3000) // Hide after 3 seconds of no mouse movement
-    }
-
-    window.addEventListener("mousemove", handleMouseMove)
-    handleMouseMove() // Initialize timer
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove)
-      if (mouseIdleTimerRef.current) {
-        clearTimeout(mouseIdleTimerRef.current)
-      }
-    }
-  }, [currentLayout])
-
+  
   const currentFile = currentIndex >= 0 ? files[currentIndex] : null
   const currentStats = currentFile ? trackStats[currentFile.name] : null
 
@@ -513,20 +483,550 @@ export function MusicPlayer() {
     return files.findIndex(f => f.id === filteredFile.id)
   }
 
-  // Computed values for layout
-  const showSidebar = currentLayout === "default" || currentLayout === "split" || currentLayout === "vertical"
-  const isTheaterMode = currentLayout === "theater"
-  const isCompactMode = currentLayout === "compact"
-  const isVerticalMode = currentLayout === "vertical"
-  const isSplitMode = currentLayout === "split"
+  // ─── Playlist content (reused in sidebar) ───
+  const playlistContent = (
+    <>
+      {/* Header */}
+      <div className="p-4 sm:p-6 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-lg flex items-center gap-2 text-foreground/90">
+            <ListMusic className="w-5 h-5 text-primary" />
+            <span className="tracking-tight">Playlist</span>
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowKeyboardHelp(true)}
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all hidden sm:block"
+              title="Keyboard Shortcuts"
+            >
+              <Keyboard className="w-5 h-5" />
+            </button>
+            <ThemeToggle className="text-muted-foreground hover:text-foreground" />
+            {/* Close button (mobile, or desktop in theater mode) */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSidebarOpen(false)}
+              className={cn(
+                "rounded-full hover:bg-muted text-muted-foreground hover:text-foreground w-8 h-8",
+                isTheaterMode ? "" : "lg:hidden"
+              )}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          variant="outline"
+          className="w-full bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200 mb-2"
+        >
+          <FolderOpen className="w-4 h-4 mr-2 text-primary" />
+          Open Folder
+        </Button>
+
+        {files.length > 0 && (
+          <div className="flex gap-2">
+            <Button
+              onClick={handleExport}
+              variant="outline"
+              size="sm"
+              className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
+              Export
+            </Button>
+            <Button
+              onClick={() => importInputRef.current?.click()}
+              variant="outline"
+              size="sm"
+              className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
+              Import
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Search & Filter */}
+      {files.length > 0 && (
+        <div className="px-4 py-3 border-b border-border space-y-2 flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search tracks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => setIsSearchFocused(false)}
+              className="w-full bg-muted/50 border border-border rounded-lg pl-9 pr-8 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          
+          <div className="flex gap-1">
+            <button
+              onClick={() => setShowOnlyLiked(false)}
+              className={cn(
+                "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all",
+                !showOnlyLiked 
+                  ? "bg-muted text-foreground" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setShowOnlyLiked(true)}
+              className={cn(
+                "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1",
+                showOnlyLiked 
+                  ? "bg-rose-500/20 text-rose-400" 
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              <Heart className="w-3 h-3" />
+              Liked
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Folder Name */}
+      {folderName && (
+        <div className="px-4 sm:px-6 py-2 text-xs text-muted-foreground font-medium uppercase tracking-wider border-b border-border flex-shrink-0">
+          {folderName}
+        </div>
+      )}
+
+      {/* File List */}
+      <div className="flex-1 overflow-y-auto">
+        {files.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
+            <div className="w-16 h-16 mb-4 rounded-full bg-muted flex items-center justify-center">
+              <Music className="w-8 h-8" />
+            </div>
+            <p className="text-center text-sm">
+              Select a folder to load your music
+            </p>
+          </div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
+            <Search className="w-8 h-8 mb-3" />
+            <p className="text-center text-sm">
+              No tracks found
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {filteredFiles.map((file, filteredIndex) => {
+              const originalIndex = getOriginalIndex(filteredIndex)
+              const stats = trackStats[file.name]
+              return (
+                <div
+                  key={file.id}
+                  onClick={() => playFile(originalIndex)}
+                  className={cn(
+                    "group px-4 py-3 hover:bg-muted/50 transition-all duration-200 cursor-pointer flex items-center gap-3",
+                    currentIndex === originalIndex && "bg-muted hover:bg-muted"
+                  )}
+                >
+                  <div className="w-8 flex items-center justify-center">
+                    {currentIndex === originalIndex && isPlaying ? (
+                      <div className="flex gap-0.5 items-end h-4">
+                        <span className="w-1 bg-primary animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
+                        <span className="w-1 bg-primary animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
+                        <span className="w-1 bg-primary animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground text-sm font-medium group-hover:text-foreground/50">
+                        {originalIndex + 1}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <span className={cn(
+                      "block truncate text-sm font-medium",
+                      currentIndex === originalIndex ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"
+                    )}>
+                      {file.name}
+                    </span>
+                    {stats && stats.playCount > 0 && (
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                        <span className="flex items-center gap-1">
+                          <PlayCircle className="w-3 h-3" />
+                          {stats.playCount} {stats.playCount === 1 ? 'play' : 'plays'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleLike(originalIndex)
+                    }}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Heart 
+                      className={cn(
+                        "w-4 h-4 transition-colors",
+                        file.liked ? "fill-rose-500 text-rose-500" : "text-muted-foreground hover:text-foreground"
+                      )} 
+                    />
+                  </button>
+
+                  {currentIndex === originalIndex && (
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Track Count & Stats Toggle */}
+      {files.length > 0 && (
+        <div className="p-4 border-t border-border flex-shrink-0">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {filteredFiles.length} of {files.length} {files.length === 1 ? "track" : "tracks"}
+              {searchQuery && ` matching "${searchQuery}"`}
+            </span>
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className={cn(
+                "p-1.5 rounded-md transition-colors",
+                showStats ? "text-primary bg-primary/20" : "hover:text-foreground hover:bg-muted"
+              )}
+            >
+              <BarChart3 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  // ─── Visualizer section (reused in both layouts) ───
+  const visualizerSection = (
+    <div 
+      className="flex flex-col items-center justify-center relative px-4 sm:px-8 flex-1"
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
+    >
+      <div className="w-full h-full flex items-center justify-center">
+        {currentVisualizer === "waveform" && (
+          <>
+            {/* Central Orb - responsive sizing via CSS */}
+            <div className="relative mb-4 sm:mb-8">
+              <AudioOrb 
+                isPlaying={isPlaying} 
+                audioData={audioData} 
+                className="drop-shadow-[0_0_40px_rgba(99,102,241,0.3)] w-[200px] h-[200px] sm:w-[280px] sm:h-[280px] lg:w-[320px] lg:h-[320px]"
+                colors={visualizerColors}
+              />
+              
+              <div className={cn(
+                "absolute inset-0 rounded-full border border-border/50 transition-all duration-500",
+                isPlaying && "scale-110 opacity-50"
+              )} />
+            </div>
+
+            {/* Waveform Visualizer */}
+            <div className="w-full max-w-3xl px-4 sm:px-8 h-20 sm:h-32 absolute bottom-16 sm:bottom-32">
+              <WaveformVisualizer
+                audioData={audioData}
+                isPlaying={isPlaying}
+                barCount={100}
+                className="opacity-80"
+                colors={visualizerColors}
+              />
+            </div>
+          </>
+        )}
+
+        {currentVisualizer === "circular" && (
+          <div className="w-full h-[280px] sm:h-[380px] lg:h-[450px] max-w-3xl">
+            <CircularVisualizer
+              audioData={audioData}
+              isPlaying={isPlaying}
+              className="opacity-90"
+              colors={visualizerColors}
+            />
+          </div>
+        )}
+
+        {currentVisualizer === "rings" && (
+          <div className="w-full h-[280px] sm:h-[380px] lg:h-[450px] max-w-3xl">
+            <FrequencyRingVisualizer
+              audioData={audioData}
+              isPlaying={isPlaying}
+              className="opacity-90"
+              colors={visualizerColors}
+            />
+          </div>
+        )}
+
+        {currentVisualizer === "particles" && (
+          <div className="absolute inset-0 z-0">
+            <ParticlesVisualizer
+              audioData={audioData}
+              isPlaying={isPlaying}
+              colors={visualizerColors}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Track Info Overlay */}
+      <div className="mt-4 sm:mt-8 text-center">
+        {currentFile ? (
+          <>
+            <h1 className="font-bold text-foreground mb-1 sm:mb-2 tracking-tight text-lg sm:text-2xl px-4 truncate max-w-[90vw] sm:max-w-none">
+              {currentFile.name}
+            </h1>
+            <div className="flex items-center justify-center gap-4 text-muted-foreground text-xs sm:text-sm">
+              <span>Track {currentIndex + 1} of {files.length}</span>
+              {currentStats && currentStats.playCount > 0 && (
+                <span className="flex items-center gap-1">
+                  <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+                  {currentStats.playCount} {currentStats.playCount === 1 ? 'play' : 'plays'}
+                </span>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="text-muted-foreground">
+            <p className="text-base sm:text-lg font-medium mb-1">No track selected</p>
+            <p className="text-xs sm:text-sm">Open a folder to start listening</p>
+          </div>
+        )}
+      </div>
+
+      {/* Skip Buttons - 5s and 15s */}
+      {currentFile && (
+        <div className="mt-3 sm:mt-4 flex items-center justify-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => skipBackward(15)}
+            disabled={!currentFile}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 h-8 px-3 text-xs"
+          >
+            <SkipBack className="w-3 h-3 mr-1" />
+            15s
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => skipBackward(5)}
+            disabled={!currentFile}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 h-8 px-3 text-xs"
+          >
+            <SkipBack className="w-3 h-3 mr-1" />
+            5s
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => skipForward(5)}
+            disabled={!currentFile}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 h-8 px-3 text-xs"
+          >
+            5s
+            <SkipForward className="w-3 h-3 ml-1" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => skipForward(15)}
+            disabled={!currentFile}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 h-8 px-3 text-xs"
+          >
+            15s
+            <SkipForward className="w-3 h-3 ml-1" />
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+
+  // ─── Player controls (reused in both layouts) ───
+  const playerControls = (
+    <div className="bg-gradient-to-t from-background/50 to-transparent pb-4 sm:pb-8">
+      {/* Progress Bar */}
+      <div className="max-w-3xl mx-auto mb-4 sm:mb-6 px-4">
+        <div className="flex items-center gap-2 sm:gap-3 mb-2">
+          <span className="text-xs text-muted-foreground font-medium tabular-nums w-10 text-right">
+            {formatTime(currentTime)}
+          </span>
+          <Slider
+            value={[currentTime]}
+            max={duration || 100}
+            step={0.1}
+            onValueChange={handleSeek}
+            className="flex-1"
+          />
+          <span className="text-xs text-muted-foreground font-medium tabular-nums w-10">
+            {formatTime(duration)}
+          </span>
+        </div>
+      </div>
+
+      {/* Control Buttons */}
+      <div className="max-w-3xl mx-auto grid grid-cols-[1fr_auto_1fr] items-center px-4">
+        {/* Left Controls */}
+        <div className="flex items-center gap-1 sm:gap-2 justify-start">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsShuffle(!isShuffle)}
+            className={cn(
+              "rounded-full hover:bg-muted transition-all w-8 h-8 sm:w-10 sm:h-10",
+              isShuffle ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Shuffle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsRepeat(!isRepeat)}
+            className={cn(
+              "rounded-full hover:bg-muted transition-all w-8 h-8 sm:w-10 sm:h-10",
+              isRepeat ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </Button>
+        </div>
+
+        {/* Main Playback Controls */}
+        <div className="flex items-center gap-2 sm:gap-4 justify-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={playPrevious}
+            disabled={files.length === 0}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-10 h-10 sm:w-12 sm:h-12"
+          >
+            <SkipBack className="w-5 h-5 sm:w-6 sm:h-6" />
+          </Button>
+          
+          <Button
+            size="lg"
+            onClick={togglePlay}
+            disabled={!currentFile}
+            className="rounded-full w-12 h-12 sm:w-16 sm:h-16 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all"
+          >
+            {isPlaying ? (
+              <Pause className="w-5 h-5 sm:w-7 sm:h-7" />
+            ) : (
+              <Play className="w-5 h-5 sm:w-7 sm:h-7 ml-0.5" />
+            )}
+          </Button>
+          
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={playNext}
+            disabled={files.length === 0}
+            className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-10 h-10 sm:w-12 sm:h-12"
+          >
+            <SkipForward className="w-5 h-5 sm:w-6 sm:h-6" />
+          </Button>
+        </div>
+
+        {/* Volume Control - popover on mobile, inline on desktop */}
+        <div className="flex items-center justify-end">
+          {/* Mobile: popover */}
+          <div className="sm:hidden">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground w-8 h-8"
+                >
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-3.5 h-3.5" />
+                  ) : (
+                    <Volume2 className="w-3.5 h-3.5" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                side="top" 
+                align="end"
+                className="w-auto p-3 flex flex-col items-center gap-3"
+              >
+                <Slider
+                  value={[isMuted ? 0 : volume]}
+                  max={1}
+                  step={0.01}
+                  onValueChange={handleVolumeChange}
+                  orientation="vertical"
+                  className="h-24"
+                />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleMute}
+                  className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground w-8 h-8"
+                >
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-4 h-4" />
+                  ) : (
+                    <Volume2 className="w-4 h-4" />
+                  )}
+                </Button>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          {/* Desktop: inline slider */}
+          <div className="hidden sm:flex items-center gap-3 w-32">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleMute}
+              className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-4 h-4" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </Button>
+            <Slider
+              value={[isMuted ? 0 : volume]}
+              max={1}
+              step={0.01}
+              onValueChange={handleVolumeChange}
+              className="w-20"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   return (
-    <div className={cn(
-      "flex h-screen bg-background text-foreground overflow-hidden font-sans transition-all duration-300",
-      isTheaterMode && "cursor-none",
-      isTheaterMode && !isMouseIdle && "cursor-auto",
-      isVerticalMode && "flex-col"
-    )}>
+    <div className="flex h-[100dvh] bg-background text-foreground overflow-hidden font-sans transition-all duration-300">
       {/* Audio element */}
       <audio
         ref={audioRef}
@@ -536,626 +1036,100 @@ export function MusicPlayer() {
         crossOrigin="anonymous"
       />
 
-      {/* Fixed Settings Button - Right Side */}
-      <div className="fixed right-6 top-6 z-30">
-        <SettingsPanel
-          currentVisualizer={currentVisualizer}
-          onVisualizerChange={setCurrentVisualizer}
-          currentLayout={currentLayout}
-          onLayoutChange={setCurrentLayout}
-        />
-      </div>
+      {/* Hidden file inputs (always present) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        // @ts-ignore
+        webkitdirectory=""
+        directory=""
+        multiple
+        onChange={handleFolderSelect}
+        className="hidden"
+      />
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".json"
+        onChange={handleImport}
+        className="hidden"
+      />
 
-       {/* Left Sidebar - Playlist (hidden in compact/theater, top in vertical) */}
-       <div className={cn(
-          "flex flex-col border-border transition-all duration-300",
-          isVerticalMode 
-            ? "w-full h-48 bg-transparent border-b" 
-            : "bg-card border-r",
-          showSidebar && !isVerticalMode ? (isSplitMode ? "w-1/2" : "w-80") : (!isVerticalMode && "w-0 opacity-0 pointer-events-none overflow-hidden")
-        )}>
-        {/* Header - Hidden in vertical mode */}
-        {!isVerticalMode && (
-        <div className="p-6 border-b border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-lg flex items-center gap-2 text-foreground/90">
-              <ListMusic className="w-5 h-5 text-primary" />
-              <span className="tracking-tight">Playlist</span>
-            </h2>
-             <div className="flex items-center gap-2">
-               <Link
-                 href="/shortcuts"
-                 className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-all"
-                 title="Keyboard Shortcuts"
-               >
-                 <Keyboard className="w-5 h-5" />
-               </Link>
-               <ThemeToggle className="text-muted-foreground hover:text-foreground" />
-             </div>
-          </div>
-          
-          <input
-            ref={fileInputRef}
-            type="file"
-            // @ts-ignore
-            webkitdirectory=""
-            directory=""
-            multiple
-            onChange={handleFolderSelect}
-            className="hidden"
-          />
-
-          <input
-            ref={importInputRef}
-            type="file"
-            accept=".json"
-            onChange={handleImport}
-            className="hidden"
-          />
-
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            variant="outline"
-            className="w-full bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200 mb-2"
-          >
-            <FolderOpen className="w-4 h-4 mr-2 text-primary" />
-            Open Folder
-          </Button>
-
-          {files.length > 0 && (
-            <div className="flex gap-2">
-              <Button
-                onClick={handleExport}
-                variant="outline"
-                size="sm"
-                className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5 text-emerald-500" />
-                Export
-              </Button>
-              <Button
-                onClick={() => importInputRef.current?.click()}
-                variant="outline"
-                size="sm"
-                className="flex-1 bg-muted/50 border-border text-foreground/80 hover:bg-muted hover:text-foreground hover:border-border transition-all duration-200"
-              >
-                <Upload className="w-3.5 h-3.5 mr-1.5 text-blue-400" />
-                Import
-              </Button>
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Hidden inputs for vertical mode */}
-        {isVerticalMode && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              // @ts-ignore
-              webkitdirectory=""
-              directory=""
-              multiple
-              onChange={handleFolderSelect}
-              className="hidden"
-            />
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json"
-              onChange={handleImport}
-              className="hidden"
-            />
-          </>
-        )}
-
-        {/* Search & Filter - Hidden in vertical mode */}
-        {files.length > 0 && !isVerticalMode && (
-          <div className="px-4 py-3 border-b border-border space-y-2">
-            {/* Search Input */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Search tracks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
-                className="w-full bg-muted/50 border border-border rounded-lg pl-9 pr-8 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-            
-            {/* Filter Tabs */}
-            <div className="flex gap-1">
-              <button
-                onClick={() => setShowOnlyLiked(false)}
-                className={cn(
-                  "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all",
-                  !showOnlyLiked 
-                    ? "bg-muted text-foreground" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setShowOnlyLiked(true)}
-                className={cn(
-                  "flex-1 py-1.5 px-3 text-xs font-medium rounded-md transition-all flex items-center justify-center gap-1",
-                  showOnlyLiked 
-                    ? "bg-rose-500/20 text-rose-400" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                <Heart className="w-3 h-3" />
-                Liked
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Folder Name - Hidden in vertical mode */}
-        {folderName && !isVerticalMode && (
-          <div className="px-6 py-2 text-xs text-muted-foreground font-medium uppercase tracking-wider border-b border-border">
-            {folderName}
-          </div>
-        )}
-
-        {/* File List - Horizontal scroll in vertical mode */}
-        <div className={cn(
-          "flex-1",
-          isVerticalMode ? "overflow-x-auto overflow-y-hidden" : "overflow-y-auto"
-        )}>
-          {files.length === 0 ? (
-            <div className={cn(
-              "flex items-center justify-center h-full text-muted-foreground",
-              isVerticalMode ? "flex-row gap-4 px-6" : "flex-col p-6"
-            )}>
-              <div className={cn(
-                "rounded-full bg-muted flex items-center justify-center",
-                isVerticalMode ? "w-10 h-10" : "w-16 h-16 mb-4"
-              )}>
-                <Music className={cn(isVerticalMode ? "w-5 h-5" : "w-8 h-8")} />
-              </div>
-              <p className="text-center text-sm">
-                Select a folder to load your music
-              </p>
-              {isVerticalMode && (
-                <Button
-                  onClick={() => fileInputRef.current?.click()}
-                  variant="outline"
-                  size="sm"
-                  className="ml-4 bg-muted/50 border-border"
-                >
-                  <FolderOpen className="w-4 h-4 mr-2 text-primary" />
-                  Open Folder
-                </Button>
-              )}
-            </div>
-          ) : filteredFiles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-muted-foreground p-6">
-              <Search className="w-8 h-8 mb-3" />
-              <p className="text-center text-sm">
-                No tracks found
-              </p>
-            </div>
-          ) : isVerticalMode ? (
-            /* Horizontal track list for vertical mode */
-            <div className="flex gap-2 px-4 py-2 h-full items-center">
-              {filteredFiles.map((file, filteredIndex) => {
-                const originalIndex = getOriginalIndex(filteredIndex)
-                return (
-                  <button
-                    key={file.id}
-                    onClick={() => playFile(originalIndex)}
-                    className={cn(
-                      "flex-shrink-0 px-4 py-2 rounded-lg transition-all duration-200 flex items-center gap-2 text-sm",
-                      currentIndex === originalIndex 
-                        ? "bg-primary/20 text-primary border border-primary/30" 
-                        : "bg-muted/30 text-muted-foreground hover:bg-muted/50 hover:text-foreground border border-transparent"
-                    )}
-                  >
-                    {currentIndex === originalIndex && isPlaying && (
-                      <div className="flex gap-0.5 items-end h-3">
-                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
-                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
-                        <span className="w-0.5 bg-primary animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
-                      </div>
-                    )}
-                    <span className="truncate max-w-48">{file.name}</span>
-                    {file.liked && <Heart className="w-3 h-3 fill-rose-500 text-rose-500 flex-shrink-0" />}
-                  </button>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="divide-y divide-white/5">
-              {filteredFiles.map((file, filteredIndex) => {
-                const originalIndex = getOriginalIndex(filteredIndex)
-                const stats = trackStats[file.name]
-                return (
-                  <div
-                    key={file.id}
-                    onClick={() => playFile(originalIndex)}
-                    className={cn(
-                      "group px-4 py-3 hover:bg-muted/50 transition-all duration-200 cursor-pointer flex items-center gap-3",
-                      currentIndex === originalIndex && "bg-muted hover:bg-muted"
-                    )}
-                  >
-                    {/* Track Number / Playing Indicator */}
-                    <div className="w-8 flex items-center justify-center">
-                      {currentIndex === originalIndex && isPlaying ? (
-                        <div className="flex gap-0.5 items-end h-4">
-                          <span className="w-1 bg-primary animate-pulse" style={{ height: "40%", animationDelay: "0ms" }} />
-                          <span className="w-1 bg-primary animate-pulse" style={{ height: "70%", animationDelay: "150ms" }} />
-                          <span className="w-1 bg-primary animate-pulse" style={{ height: "100%", animationDelay: "300ms" }} />
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm font-medium group-hover:text-foreground/50">
-                          {originalIndex + 1}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Track Name and Stats */}
-                    <div className="flex-1 min-w-0">
-                      <span className={cn(
-                        "block truncate text-sm font-medium",
-                        currentIndex === originalIndex ? "text-foreground" : "text-muted-foreground group-hover:text-foreground/80"
-                      )}>
-                        {file.name}
-                      </span>
-                      {stats && stats.playCount > 0 && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
-                          <span className="flex items-center gap-1">
-                            <PlayCircle className="w-3 h-3" />
-                            {stats.playCount} {stats.playCount === 1 ? 'play' : 'plays'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Like Button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        toggleLike(originalIndex)
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Heart 
-                        className={cn(
-                          "w-4 h-4 transition-colors",
-                          file.liked ? "fill-rose-500 text-rose-500" : "text-muted-foreground hover:text-foreground"
-                        )} 
-                      />
-                    </button>
-
-                    {/* Active Indicator */}
-                    {currentIndex === originalIndex && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]" />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Track Count & Stats Toggle */}
-        {files.length > 0 && (
-          <div className="p-4 border-t border-border">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <span>
-                {filteredFiles.length} of {files.length} {files.length === 1 ? "track" : "tracks"}
-                {searchQuery && ` matching "${searchQuery}"`}
-              </span>
-              <button
-                onClick={() => setShowStats(!showStats)}
-                className={cn(
-                  "p-1.5 rounded-md transition-colors",
-                  showStats ? "text-primary bg-primary/20" : "hover:text-foreground hover:bg-muted"
-                )}
-              >
-                <BarChart3 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-       {/* Main Player Area */}
-       <div className={cn(
-         "flex-1 flex relative",
-         isVerticalMode ? "flex-col" : "flex-col"
-       )}>
-         {/* Glass Background Effect */}
-         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent pointer-events-none" />
-        
-        {/* Floating Controls Header for Compact/Theater modes */}
-        {!showSidebar && (
-          <div className={cn(
-            "absolute top-0 left-0 right-0 z-20 p-4 flex items-center justify-between transition-all duration-300",
-            isTheaterMode && isMouseIdle && "opacity-0 pointer-events-none"
-          )}>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setCurrentLayout("default")}
-                className="p-2 rounded-lg bg-card/80 backdrop-blur-sm border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-all"
-                title="Show Sidebar"
-              >
-                <PanelLeft className="w-5 h-5" />
-              </button>
-              {currentFile && (
-                <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg px-4 py-2">
-                  <p className="text-sm font-medium text-foreground truncate max-w-md">{currentFile.name}</p>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-            </div>
-          </div>
-        )}
-        
-        {/* Visualizer Section */}
+      {/* Sidebar backdrop (mobile always, desktop only in theater mode) */}
+      {isSidebarOpen && (
         <div 
           className={cn(
-            "flex flex-col items-center justify-center relative px-8",
-            isTheaterMode && "px-0",
-            isVerticalMode ? "h-64 flex-shrink-0" : "flex-1"
+            "fixed inset-0 bg-black/50 z-40",
+            isTheaterMode ? "" : "lg:hidden"
           )}
-          onMouseEnter={() => setIsHovering(true)}
-          onMouseLeave={() => setIsHovering(false)}
-        >
-          {/* Dynamic Visualizer */}
-          <div className={cn(
-            "w-full h-full flex items-center justify-center",
-            isTheaterMode && "scale-125"
-          )}>
-            {currentVisualizer === "waveform" && (
-              <>
-                {/* Central Orb */}
-                <div className="relative mb-8">
-                  <AudioOrb 
-                    isPlaying={isPlaying} 
-                    audioData={audioData} 
-                    size={isTheaterMode ? 420 : 320}
-                    className="drop-shadow-[0_0_40px_rgba(99,102,241,0.3)]"
-                    colors={visualizerColors}
-                  />
-                  
-                  {/* Glow ring */}
-                  <div className={cn(
-                    "absolute inset-0 rounded-full border border-border/50 transition-all duration-500",
-                    isPlaying && "scale-110 opacity-50"
-                  )} />
-                </div>
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-                {/* Waveform Visualizer */}
-                <div className={cn(
-                  "w-full max-w-3xl px-8 h-32 absolute",
-                  isTheaterMode ? "bottom-48 max-w-5xl h-40" : "bottom-32"
-                )}>
-                  <WaveformVisualizer
-                    audioData={audioData}
-                    isPlaying={isPlaying}
-                    barCount={isTheaterMode ? 140 : 100}
-                    className="opacity-80"
-                    colors={visualizerColors}
-                  />
-                </div>
-              </>
-            )}
+      {/* ─── Sidebar ─── */}
+      {/* Mobile: fixed slide-over drawer. Desktop: static in flex flow (or drawer in theater mode). */}
+      <aside className={cn(
+        "flex flex-col bg-card border-r border-border flex-shrink-0",
+        // Mobile: fixed drawer
+        "fixed inset-y-0 left-0 z-50 w-[85vw] max-w-80",
+        "transition-transform duration-300",
+        isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+        // Desktop: static sidebar in flex flow (unless theater mode)
+        !isTheaterMode && "lg:static lg:z-0 lg:w-80 lg:max-w-none lg:translate-x-0 lg:transition-none"
+      )}>
+        {playlistContent}
+      </aside>
 
-            {currentVisualizer === "circular" && (
-              <div className={cn(
-                "w-full h-[450px]",
-                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
-              )}>
-                <CircularVisualizer
-                  audioData={audioData}
-                  isPlaying={isPlaying}
-                  className="opacity-90"
-                  colors={visualizerColors}
-                />
-              </div>
-            )}
-
-            {currentVisualizer === "rings" && (
-              <div className={cn(
-                "w-full h-[450px]",
-                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
-              )}>
-                <FrequencyRingVisualizer
-                  audioData={audioData}
-                  isPlaying={isPlaying}
-                  className="opacity-90"
-                  colors={visualizerColors}
-                />
-              </div>
-            )}
-
-            {currentVisualizer === "particles" && (
-              <div className={cn(
-                "w-full h-[450px]",
-                isTheaterMode ? "max-w-5xl h-[600px]" : "max-w-3xl"
-              )}>
-                <ParticlesVisualizer
-                  audioData={audioData}
-                  isPlaying={isPlaying}
-                  className="opacity-90"
-                  colors={visualizerColors}
-                />
+      {/* ─── Main content area ─── */}
+      <div className="flex-1 flex flex-col relative overflow-hidden">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 z-20 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            {/* Hamburger - mobile only (or desktop in theater mode) */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSidebarOpen(true)}
+              className={cn(
+                "rounded-full hover:bg-muted text-muted-foreground hover:text-foreground w-9 h-9 sm:w-10 sm:h-10",
+                isTheaterMode ? "" : "lg:hidden"
+              )}
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+            {/* Current track name (mobile only, or desktop in theater mode) */}
+            {currentFile && (
+              <div className={cn(isTheaterMode ? "" : "lg:hidden")}>
+                <p className="text-xs font-medium text-foreground truncate max-w-[200px]">{currentFile.name}</p>
               </div>
             )}
           </div>
-
-          {/* Track Info Overlay */}
-          <div className={cn(
-            "mt-8 text-center transition-all duration-300",
-            isTheaterMode && isMouseIdle && "opacity-0"
-          )}>
-            {currentFile ? (
-              <>
-                <h1 className={cn(
-                  "font-bold text-foreground mb-2 tracking-tight",
-                  isTheaterMode ? "text-4xl" : "text-2xl"
-                )}>
-                  {currentFile.name}
-                </h1>
-                <div className="flex items-center justify-center gap-4 text-muted-foreground text-sm">
-                  <span>Track {currentIndex + 1} of {files.length}</span>
-                  {currentStats && currentStats.playCount > 0 && (
-                    <span className="flex items-center gap-1">
-                      <PlayCircle className="w-4 h-4" />
-                      {currentStats.playCount} {currentStats.playCount === 1 ? 'play' : 'plays'}
-                    </span>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="text-muted-foreground">
-                <p className="text-lg font-medium mb-1">No track selected</p>
-                <p className="text-sm">Open a folder to start listening</p>
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            {/* Theater mode toggle - desktop only */}
+            <button
+              onClick={() => setIsTheaterMode(prev => !prev)}
+              className={cn(
+                "hidden lg:flex p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all",
+                isTheaterMode && "bg-muted/50 text-foreground"
+              )}
+              title={isTheaterMode ? "Exit theater mode (T)" : "Theater mode (T)"}
+            >
+              {isTheaterMode ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
+            </button>
+            <SettingsPanel
+              currentVisualizer={currentVisualizer}
+              onVisualizerChange={setCurrentVisualizer}
+            />
           </div>
         </div>
 
-        {/* Player Controls Section */}
-        <div className={cn(
-          "bg-gradient-to-t from-background/50 to-transparent transition-all duration-300",
-          isTheaterMode && isMouseIdle && "opacity-0 pointer-events-none",
-          isVerticalMode ? "flex-1 flex flex-col justify-end pb-6" : "pb-48",
-          isCompactMode && "pb-8"
-        )}>
-          {/* Progress Bar */}
-          <div className={cn(
-            "max-w-3xl mx-auto mb-6 px-4",
-            isTheaterMode && "max-w-5xl"
-          )}>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-xs text-muted-foreground font-medium tabular-nums w-10 text-right">
-                {formatTime(currentTime)}
-              </span>
-              <Slider
-                value={[currentTime]}
-                max={duration || 100}
-                step={0.1}
-                onValueChange={handleSeek}
-                className="flex-1"
-              />
-              <span className="text-xs text-muted-foreground font-medium tabular-nums w-10">
-                {formatTime(duration)}
-              </span>
-            </div>
-          </div>
+        {/* Glass Background Effect */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/5 to-transparent pointer-events-none" />
 
-          {/* Control Buttons */}
-          <div className={cn(
-            "max-w-3xl mx-auto flex items-center justify-between px-4",
-            isTheaterMode && "max-w-5xl"
-          )}>
-            {/* Left Controls */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsShuffle(!isShuffle)}
-                className={cn(
-                  "rounded-full hover:bg-muted transition-all",
-                  isShuffle ? "text-primary" : "text-muted-foreground"
-                )}
-              >
-                <Shuffle className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setIsRepeat(!isRepeat)}
-                className={cn(
-                  "rounded-full hover:bg-muted transition-all",
-                  isRepeat ? "text-primary" : "text-muted-foreground"
-                )}
-              >
-                <Repeat className="w-4 h-4" />
-              </Button>
-            </div>
-
-            {/* Main Playback Controls */}
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={playPrevious}
-                disabled={files.length === 0}
-                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-12 h-12"
-              >
-                <SkipBack className="w-6 h-6" />
-              </Button>
-              
-              <Button
-                size="lg"
-                onClick={togglePlay}
-                disabled={!currentFile}
-                className="rounded-full w-16 h-16 bg-foreground text-background hover:bg-foreground/90 disabled:opacity-30 shadow-[0_0_30px_rgba(255,255,255,0.2)] hover:shadow-[0_0_40px_rgba(255,255,255,0.3)] transition-all"
-              >
-                {isPlaying ? (
-                  <Pause className="w-7 h-7" />
-                ) : (
-                  <Play className="w-7 h-7 ml-1" />
-                )}
-              </Button>
-              
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={playNext}
-                disabled={files.length === 0}
-                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 w-12 h-12"
-              >
-                <SkipForward className="w-6 h-6" />
-              </Button>
-            </div>
-
-            {/* Volume Control */}
-            <div className="flex items-center gap-3 w-32">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={toggleMute}
-                className="rounded-full hover:bg-muted text-muted-foreground hover:text-foreground"
-              >
-                {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4" />
-                ) : (
-                  <Volume2 className="w-4 h-4" />
-                )}
-              </Button>
-              <Slider
-                value={[isMuted ? 0 : volume]}
-                max={1}
-                step={0.01}
-                onValueChange={handleVolumeChange}
-                className="w-20"
-              />
-            </div>
-          </div>
-          
-          {/* Bottom Padding */}
-          <div className={cn("h-6", isCompactMode && "h-2")} />
+        {/* Visualizer + Controls */}
+        <div className="flex-1 flex flex-col relative z-10">
+          {visualizerSection}
+          {playerControls}
         </div>
       </div>
 

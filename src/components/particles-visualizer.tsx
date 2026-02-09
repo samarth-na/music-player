@@ -78,9 +78,8 @@ export function ParticlesVisualizer({
       return
     }
 
-    // Fade effect - use a very dark version of background
-    ctx.fillStyle = "rgba(10, 10, 10, 0.1)"
-    ctx.fillRect(0, 0, width, height)
+    // Clear canvas fully transparent
+    ctx.clearRect(0, 0, width, height)
 
     // Get audio level
     let avgLevel = 0

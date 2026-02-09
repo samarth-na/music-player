@@ -21,6 +21,7 @@ export interface UseKeyboardShortcutsOptions {
   onShuffleToggle: () => void
   onRepeatToggle: () => void
   onLikeToggle: () => void
+  onTheaterToggle: () => void
   onFocusSearch: () => void
   onClearSearch: () => void
   onShowHelp: () => void
@@ -117,6 +118,15 @@ export function useKeyboardShortcuts(options: UseKeyboardShortcutsOptions) {
         showShortcutToast("R Repeat")
       },
       description: "Repeat toggle",
+      category: "Settings",
+    },
+    {
+      key: "t",
+      action: () => {
+        options.onTheaterToggle()
+        showShortcutToast("T Theater Mode")
+      },
+      description: "Theater mode toggle",
       category: "Settings",
     },
     {

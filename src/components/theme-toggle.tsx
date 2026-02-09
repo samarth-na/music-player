@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, Moon, Sun, Sparkles, CircleDot, Sunset, TreeDeciduous } from "lucide-react"
+import { Moon, Sun, Check } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 import { Button } from "@/components/ui/button"
 import {
@@ -17,20 +17,12 @@ import { ThemeId } from "@/lib/themes/types"
 const themeIcons: Record<ThemeId, React.ComponentType<{ className?: string }>> = {
   dark: Moon,
   light: Sun,
-  neon: Sparkles,
-  minimal: CircleDot,
-  sunset: Sunset,
-  forest: TreeDeciduous,
 }
 
 // Primary color swatch for visual preview
 const themeSwatches: Record<ThemeId, string> = {
-  dark: "#7c3aed",
-  light: "#d97706",
-  neon: "#ff00ff",
-  minimal: "#000000",
-  sunset: "#ff4500",
-  forest: "#00a86b",
+  dark: "#333333",
+  light: "#ffffff",
 }
 
 export function ThemeToggle({ className }: { className?: string }) {

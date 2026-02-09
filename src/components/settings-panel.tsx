@@ -4,29 +4,22 @@ import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { 
   Settings, 
-  LayoutGrid, 
   Palette, 
   Waves, 
   Circle, 
   Sparkles, 
   Activity, 
   Check,
-  Maximize2,
-  Minimize2,
-  Monitor
 } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 import { themeList } from "@/lib/themes/presets"
 import { ThemeId } from "@/lib/themes/types"
 
 export type VisualizerType = "waveform" | "circular" | "rings" | "particles"
-export type LayoutType = "default" | "compact" | "theater" | "vertical" | "split"
 
 interface SettingsPanelProps {
   currentVisualizer: VisualizerType
   onVisualizerChange: (type: VisualizerType) => void
-  currentLayout: LayoutType
-  onLayoutChange: (layout: LayoutType) => void
   className?: string
 }
 
@@ -35,14 +28,6 @@ const visualizers = [
   { id: "circular" as VisualizerType, label: "Circular", icon: Circle, description: "Radial frequency display" },
   { id: "rings" as VisualizerType, label: "Frequency Rings", icon: Activity, description: "Rotating ring waves" },
   { id: "particles" as VisualizerType, label: "Particles", icon: Sparkles, description: "Reactive particle system" },
-]
-
-const layouts = [
-  { id: "default" as LayoutType, label: "Default", icon: Monitor, description: "Sidebar + Player + Visualizer" },
-  { id: "compact" as LayoutType, label: "Compact", icon: Minimize2, description: "Minimal controls only" },
-  { id: "theater" as LayoutType, label: "Theater", icon: Maximize2, description: "Fullscreen visualizer" },
-  { id: "vertical" as LayoutType, label: "Vertical", icon: LayoutGrid, description: "Stacked vertically" },
-  { id: "split" as LayoutType, label: "Split", icon: LayoutGrid, description: "Playlist + Player side by side" },
 ]
 
 // Visualizer preset options
@@ -57,23 +42,17 @@ const visualizerPresetOptions = [
 
 // Theme color swatches for visual preview
 const themeSwatches: Record<ThemeId, string> = {
-  dark: "#7c3aed",
-  light: "#d97706",
-  neon: "#ff00ff",
-  minimal: "#000000",
-  sunset: "#ff4500",
-  forest: "#00a86b",
+  dark: "#333333",
+  light: "#ffffff",
 }
 
 export function SettingsPanel({
   currentVisualizer,
   onVisualizerChange,
-  currentLayout,
-  onLayoutChange,
   className,
 }: SettingsPanelProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<"visualizer" | "theme" | "layout">("visualizer")
+  const [activeTab, setActiveTab] = useState<"visualizer" | "theme">("visualizer")
   const { theme, setTheme, visualizerPreset, setVisualizerPreset } = useTheme()
 
   return (
@@ -100,7 +79,7 @@ export function SettingsPanel({
           />
 
           {/* Panel - positioned to stay within viewport */}
-          <div className="fixed right-4 top-16 w-80 max-h-[calc(100vh-5rem)] bg-card border border-border rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
+          <div className="fixed right-2 left-2 sm:left-auto sm:right-4 top-16 sm:w-80 max-h-[calc(100vh-5rem)] bg-card border border-border rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden">
             {/* Header */}
             <div className="px-5 py-4 border-b border-border flex-shrink-0">
               <h3 className="text-sm font-semibold text-foreground">Settings</h3>
@@ -111,7 +90,6 @@ export function SettingsPanel({
               {[
                 { id: "visualizer", label: "Visualizer", icon: Waves },
                 { id: "theme", label: "Theme", icon: Palette },
-                { id: "layout", label: "Layout", icon: LayoutGrid },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -224,36 +202,6 @@ export function SettingsPanel({
                           <span className="text-xs opacity-60">{themeOption.description}</span>
                         </div>
                         {theme === themeOption.id && (
-                          <Check className="ml-auto w-4 h-4 flex-shrink-0" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Layout Options */}
-              {activeTab === "layout" && (
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-3">Player Layout</p>
-                  <div className="space-y-1.5">
-                    {layouts.map((layout) => (
-                      <button
-                        key={layout.id}
-                        onClick={() => onLayoutChange(layout.id)}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all",
-                          currentLayout === layout.id
-                            ? "bg-primary/20 text-primary border border-primary/30"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                        )}
-                      >
-                        <layout.icon className="w-4 h-4 flex-shrink-0" />
-                        <div className="flex flex-col items-start text-left">
-                          <span className="font-medium">{layout.label}</span>
-                          <span className="text-xs opacity-60">{layout.description}</span>
-                        </div>
-                        {currentLayout === layout.id && (
                           <Check className="ml-auto w-4 h-4 flex-shrink-0" />
                         )}
                       </button>

@@ -1,6 +1,6 @@
 // Theme system types
 
-export type ThemeId = "dark" | "light" | "neon" | "minimal" | "sunset" | "forest"
+export type ThemeId = "dark" | "light"
 
 export interface VisualizerColors {
   // Primary gradient colors (used for bars, rings, etc.)

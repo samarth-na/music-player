@@ -31,7 +31,7 @@ const initialState: ThemeProviderState = {
 const ThemeProviderContext = createContext<ThemeProviderState>(initialState)
 
 // All theme class names to remove when switching
-const themeClasses = ["dark", "light", "neon", "minimal", "sunset", "forest"] as const
+const themeClasses = ["dark", "light"] as const
 
 export function ThemeProvider({
   children,
@@ -78,7 +78,6 @@ export function ThemeProvider({
   const setTheme = useCallback((newTheme: ThemeId) => {
     localStorage.setItem(storageKey, newTheme)
     setThemeState(newTheme)
-    // Theme and visualizer colors are now independent - no auto-sync
   }, [storageKey])
 
   const setVisualizerPreset = useCallback((presetId: string) => {

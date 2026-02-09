@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { cn } from "@/lib/utils"
 import { VisualizerColors } from "@/lib/themes/types"
 
@@ -42,13 +42,14 @@ function hexToRgba(hex: string, alpha: number): string {
 export function AudioOrb({ 
   isPlaying, 
   audioData, 
-  size = 300, 
+  size, 
   className,
   colors = defaultColors,
 }: AudioOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationRef = useRef<number>(0)
   const rotationRef = useRef(0)
+  const [resolvedSize, setResolvedSize] = useState(size ?? 300)
 
   const drawOrb = useCallback(() => {
     const canvas = canvasRef.current
@@ -150,15 +151,40 @@ export function AudioOrb({
     ctx.shadowBlur = 0
 
     animationRef.current = requestAnimationFrame(drawOrb)
-  }, [isPlaying, audioData, size, colors])
+  }, [isPlaying, audioData, resolvedSize, colors])
+
+  // ResizeObserver to track CSS-driven size changes
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // If an explicit size prop is passed, use it directly
+    if (size !== undefined) {
+      setResolvedSize(size)
+      return
+    }
+
+    // Otherwise, observe the element's CSS dimensions
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect
+        const s = Math.min(width, height)
+        if (s > 0) {
+          setResolvedSize(s)
+        }
+      }
+    })
+    observer.observe(canvas)
+    return () => observer.disconnect()
+  }, [size])
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
 
     const dpr = window.devicePixelRatio || 1
-    canvas.width = size * dpr
-    canvas.height = size * dpr
+    canvas.width = resolvedSize * dpr
+    canvas.height = resolvedSize * dpr
     
     const ctx = canvas.getContext("2d")
     if (ctx) {
@@ -170,15 +196,15 @@ export function AudioOrb({
     return () => {
       cancelAnimationFrame(animationRef.current)
     }
-  }, [drawOrb, size])
+  }, [drawOrb, resolvedSize])
 
   return (
     <canvas
       ref={canvasRef}
-      width={size}
-      height={size}
+      width={resolvedSize}
+      height={resolvedSize}
       className={cn("", className)}
-      style={{ width: size, height: size }}
+      style={size !== undefined ? { width: size, height: size } : undefined}
     />
   )
 }
