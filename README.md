@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ElevenMusic
 
-## Getting Started
+A local-first music player with live audio visualizers. Import your own folder or files; the audio never leaves your browser.
 
-First, run the development server:
+**Live demo:** https://local-music-player-sable.vercel.app
+
+## Features
+
+- Local folder and file import using `webkitRelativePath`.
+- Play/pause, seek, next/previous, shuffle, repeat, volume, and mute.
+- Favorites, search, and play-count statistics.
+- Library persistence in IndexedDB through `idb`, with `.elevenmusic.json` import/export.
+- Five theme-aware visualizers: orb, waveform, circular, frequency-ring, and particles.
+- Toast feedback, theater mode, a mobile drawer, and a keyboard shortcut reference page.
+- ElevenLabs speech and scribe UI components.
+
+## Stack
+
+- Next.js 16.1.6, React 19.2.3, TypeScript
+- Three.js 0.182 with `@react-three/fiber` 9.5 and `drei` 10.7 for visualizers
+- ElevenLabs SDKs (`elevenlabs-js`, `@elevenlabs/react`)
+- `idb` for IndexedDB, `motion` for animation, Radix, Tailwind CSS 4, ESLint 9
+- npm with `package-lock.json`
+
+## Requirements
+
+- Node.js 18 or newer
+- npm
+- A local folder of audio files
+
+## Run locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+No environment variables or `.env.example` are required. Audio files stay in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
 
-## Learn More
+There is no test script yet.
 
-To learn more about Next.js, take a look at the following resources:
+## Usage
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open the app, choose a folder or individual files, and playback starts locally. Press `?` for the shortcut list or visit `/shortcuts`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Key | Action |
+| --- | --- |
+| `Space` | Play or pause |
+| `←` / `→` | Seek backward or forward |
+| `↑` / `↓` | Volume up or down |
+| `M` | Mute |
+| `S` | Shuffle |
+| `R` | Repeat |
+| `L` | Favorites |
+| `Ctrl/⌘ + F` | Search |
+| `Esc` | Close overlay |
+| `?` | Shortcut reference |
 
-## Deploy on Vercel
+## Status and contributions
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+There is no license file. A GitHub workflow allows `/oc` or `/opencode` comments on issues and pull requests to run an agent, but there is no CONTRIBUTING guide. The npm package name is `elevenmusic` while the repository is `music-player`; keep them distinct on purpose or rename one for consistency. Add a `LICENSE` and contribution notes before inviting outside help.
