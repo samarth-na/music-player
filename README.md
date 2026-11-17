@@ -2,7 +2,7 @@
 
 A local-first music player with live audio visualizers. Import your own folder or files; the audio never leaves your browser.
 
-**Live demo:** https://local-music-player-sable.vercel.app
+**Deployment:** the earlier Vercel demo URL no longer resolves; there is no live demo at present.
 
 ## Features
 
